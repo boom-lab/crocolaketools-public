@@ -1,0 +1,302 @@
+#!/usr/bin/env python3
+
+## @file converterArgoQC.py
+#
+#
+## @author Enrico Milanese <enrico.milanese@whoi.edu>
+#
+## @date Tue 04 Feb 2025
+
+##########################################################################
+import os
+import warnings
+import dask.dataframe as dd
+from dask.distributed import Lock
+import gsw
+import numpy as np
+import pandas as pd
+import pyarrow as pa
+import pyarrow.parquet as pq
+import xarray as xr
+from crocolaketools.utils import params
+from crocolaketools.converter.converter import Converter
+##########################################################################
+
+class ConverterArgoQC(Converter):
+
+    """class ConverterSprayGliders: methods to generate parquet schemas for
+    Spray Gliders netCDF files
+
+    """
+
+    # ------------------------------------------------------------------ #
+    # Constructors/Destructors                                           #
+    # ------------------------------------------------------------------ #
+
+    def __init__(self, db=None, db_type=None, input_path=None, outdir_pq=None, outdir_schema=None, fname_pq=None, add_derived_vars=False, overwrite=False):
+        if not db == "ARGO":
+            raise ValueError("Database must be ARGO.")
+        Converter.__init__(self, db, db_type, input_path, outdir_pq, outdir_schema, fname_pq, add_derived_vars, overwrite)
+
+    # ------------------------------------------------------------------ #
+    # Methods                                                            #
+    # ------------------------------------------------------------------ #
+
+    def convert(self, filenames=None):
+
+        if isinstance(filenames,str) or filenames is None:
+            ddf_c = self.read_to_df(filename=filenames)
+        elif isinstance(filenames,list):
+            ddf_c = dd.from_map( self.read_to_df, filenames )
+
+        if self.add_derived_vars:
+            ddf_c = self.add_derived_variables(ddf_c)
+
+        #ddf_c = self.read_to_df(filenames)
+        #ddf_c = dd.from_map( self.read_to_df, [filenames] )
+        ddf_c = ddf_c.repartition(partition_size="300MB")
+        self.to_parquet(ddf_c)
+
+#------------------------------------------------------------------------------#
+## Read file to convert into a pandas dataframe
+    def read_to_df(self, filename=None, lock=None):
+        """Read ARGO parquet database into a dask dataframe and update its
+        columns to match the format for higher QC data
+
+        Arguments:
+        filename  --  (unused, needed for compatibility with super.read_to_df() )
+        lock      --  (unused, needed for compatibility with super.read_to_df() )
+
+        Returns:
+        ddf -- dask dataframe containing ARGO observations for high QC version
+        """
+
+        print("read_pq...")
+        print(filename)
+        ddf = self.read_pq(filename=filename)
+        print("read.")
+
+        print("update_cols...")
+        ddf = self.update_cols(ddf)
+        print("updated.")
+        self.generate_schema(ddf.columns.to_list())
+
+        return ddf
+
+#------------------------------------------------------------------------------#
+## Read ARGO parque database
+    def read_pq(self,filename=None):
+        """Generate filters and basenames, and read in the ARGO database
+
+        Returns:
+        ddf -- dask dataframe containing ARGO observations read from parquet
+        """
+
+        filters, self.param_basenames = self.generate_qc_schema_filters()
+
+        if filename is None:
+            filename = self.input_path # read whole database
+
+        print("Reading ARGO database from ", filename)
+        ddf = dd.read_parquet(
+            filename,
+            engine="pyarrow",
+            dtype_backend = "pyarrow",
+            filters = filters,
+            split_row_groups = False,
+        )
+
+        cols_cat = []
+        for param in ddf.columns:
+            if "DATA_MODE" in param:
+                cols_cat.append(param)
+        cols_cat.append("DIRECTION")
+        ddf = ddf.categorize(columns=cols_cat)
+
+        return ddf
+
+#------------------------------------------------------------------------------#
+## Update columns
+    def update_cols(self,ddf):
+        """Update columns to keep the best values for each row, add database
+        name, and remove extra columns
+
+        Argument:
+        ddf  --  dask dataframe containing ARGO observations read from parquet
+
+        Returns:
+        ddf -- updated dask dataframe
+        """
+
+        data_mode_col = "DATA_MODE"
+        meta = {}
+        for col in ddf.columns:
+            meta[col] = ddf.dtypes[col]
+
+        #generate meta for each parameter
+        for param in self.param_basenames:
+            for p in [param, param+"_QC", param+"_ERROR"]:
+                if p == param:
+                    meta[p] = "float32[pyarrow]"
+                elif p == param+"_QC":
+                    meta[p] = "uint8[pyarrow]"
+                else:
+                    meta[p] = "float32[pyarrow]"
+
+        # keep best values for each parameter
+        for param in self.param_basenames:
+            if self.db_type == "BGC":
+                data_mode_col = param+"_DATA_MODE"
+            ddf = ddf.map_partitions(self.keep_best_values, param, data_mode_col)#, meta=meta)
+
+        # remove extra columns
+        cols_to_drop = []
+        for param in self.param_basenames:
+            to_drop_adj = param+"_ADJUSTED"
+            to_drop_adj_qc = param+"_ADJUSTED_QC"
+            to_drop_adj_err = param+"_ADJUSTED_ERROR"
+            if to_drop_adj in ddf.columns:
+                cols_to_drop.append(to_drop_adj)
+            if to_drop_adj_qc in ddf.columns:
+                cols_to_drop.append(to_drop_adj_qc)
+            if to_drop_adj_err in ddf.columns:
+                cols_to_drop.append(to_drop_adj_err)
+        ddf = ddf.drop(columns=cols_to_drop)
+
+        # remove rows with only NAs
+        ddf = ddf.map_partitions(self.remove_all_NAs, self.param_basenames)#, meta=ddf)
+
+        # add database name if not present
+        if "DB_NAME" not in ddf.columns:
+            ddf["DB_NAME"] = self.db
+            categories = pd.Series(params.databases, dtype='string[pyarrow]')
+            ddf["DB_NAME"] = ddf["DB_NAME"].astype(pd.CategoricalDtype(categories=categories, ordered=False))
+
+        # convert DATA_MODEs to categorical
+        categories_dm = pd.Series(["R","A","D"], dtype='string[pyarrow]')
+        for col in ddf.columns:
+            if "DATA_MODE" in col:
+                ddf[col] = ddf[col].astype(pd.CategoricalDtype(categories=categories_dm, ordered=False))
+
+        return ddf
+
+#------------------------------------------------------------------------------#
+## Keep best values for each row
+    def keep_best_values(self,df,param,data_mode_col):
+    # def keep_best_values(self,row,param,data_mode_col):
+        """Keep the best observation available for each row
+
+        Arguments:
+        row  --  a row of a pandas dataframe containing Argo observations
+        param -- base name of the parameter to keep (i.e. <PARAM> in Argo
+                      convetion)
+
+        Returns:
+        param_value, param_qc, param_dm -- best value, quality flag and data mode
+        """
+
+        # PHY has one DATA_MODE variable for all variables of each row
+        # BGC has one DATA_MODE variable for each variable of each row
+        #row_data_mode = row[data_mode_col]
+
+        condition_1 = ( ~df[param+"_ADJUSTED"].isna() ) & ( df[param + "_ADJUSTED_QC"].isin([1, 2]) ) & ( df[data_mode_col].isin(["A", "D"]) )
+        condition_2 = ( ~df[param].isna() ) & ( df[param+"_QC"].isin([1, 2]) ) & (df[data_mode_col] == "R")
+        condition_3 = ~(condition_1 | condition_2)
+
+        df.loc[condition_1, param] = df.loc[condition_1, param+"_ADJUSTED"]
+        df.loc[condition_1, param+"_QC"] = df.loc[condition_1, param+"_ADJUSTED_QC"]
+        df.loc[condition_1, param+"_ERROR"] = df.loc[condition_1, param+"_ADJUSTED_ERROR"]
+
+        #df.loc[condition_2, param] = df.loc[condition_2, param]
+        #df.loc[condition_2, param+"_QC"] = df.loc[condition_2, param+"_QC"]
+        df.loc[condition_2, param+"_ERROR"] = pd.NA
+
+        df.loc[condition_3, param] = pd.NA
+        df.loc[condition_3, param+"_QC"] = pd.NA
+        df.loc[condition_3, param+"_ERROR"] = pd.NA
+
+        if df[param].dtypes != "float32[pyarrow]":
+            df[param] = df[param].astype("float32[pyarrow]")
+        if df[param+"_QC"].dtypes != "uint8[pyarrow]":
+            df[param+"_QC"] = df[param+"_QC"].astype("uint8[pyarrow]")
+        if df[param+"_ERROR"].dtypes != "float32[pyarrow]":
+            df[param+"_ERROR"] = df[param+"_ERROR"].astype("float32[pyarrow]")
+
+        return df
+
+#------------------------------------------------------------------------------#
+## Remove row if all measurements are NA
+    def remove_all_NAs(self,df,cols_to_check):
+        """Remove rows with all NA values
+
+        Arguments:
+        df  --  dataframe (needed to use this function with dd.map_partitions)
+
+        Returns:
+        df -- dataframe with rows removed
+        """
+
+        condition_na = df[ cols_to_check ].isna().all(axis="columns")
+        df = df.loc[~condition_na]
+        df.reset_index(drop=True, inplace=True)
+
+        # print("Removed ", condition_na.sum(), " rows with all NA values")
+        # print("df:")
+        # with pd.option_context('display.max_columns', None):
+        #     print(df)
+
+        return df
+
+#------------------------------------------------------------------------------#
+## Generate schema and filters for ARGO QC
+    def generate_qc_schema_filters(self):
+        """ Generate schema and filters for ARGO QC from ARGO standard names
+
+        Returns:
+        filterQC -- list of tuples to filter by QC and data mode
+        param_basenames -- list of base names of parameters (i.e. <PARAM> in Argo)
+        """
+
+        db_schema = pq.read_schema(self.input_path+"/_common_metadata")
+
+        filters = []
+        filter_qc = []
+        filter_adj_qc = []
+        param_basenames = []
+        skip = ["POSITION","JULD"]
+        for param in db_schema.names:
+            filter_loc = []
+            if "_ADJUSTED_QC" in param:
+                second_last_index = param.rfind("_", 0, param.rfind("_") )
+                param_base_name = param[:second_last_index]
+                if param_base_name in skip:
+                    continue
+                if param_base_name not in param_basenames:
+                    param_basenames.append(param_base_name)
+                filter_loc.append( (param, "in", [1,2]) )
+                if self.db_type == "BGC":
+                    param_data_mode = param_base_name + "_DATA_MODE"
+                    filter_loc.append( (param_data_mode, "in", ["A","D"]) )
+            elif "_QC" in param and "POSITION" not in param:
+                last_index = param.rfind("_")
+                param_base_name = param[:last_index]
+                if param_base_name in skip:
+                    continue
+                if param_base_name not in param_basenames:
+                    param_basenames.append(param_base_name)
+                filter_loc.append( (param, "in", [1,2]) )
+                if self.db_type == "BGC":
+                    param_data_mode = param_base_name + "_DATA_MODE"
+                    filter_loc.append( (param_data_mode, "==", "R") )
+
+            if len(filter_loc) > 0:
+                filters.append(filter_loc)
+
+        #filter_all = [ filter_adj_qc, filter_qc ]
+
+        return filters, param_basenames
+
+
+##########################################################################
+if __name__ == "__main__":
+    ConverterArgoQC()
