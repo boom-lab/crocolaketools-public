@@ -18,7 +18,7 @@ import pandas as pd
 import pyarrow as pa
 import pyarrow.parquet as pq
 import xarray as xr
-from crocolaketools.utils import params
+from crocolakeloader import params
 ##########################################################################
 
 
@@ -182,9 +182,14 @@ class Converter:
 
 #------------------------------------------------------------------------------#
 ## Generating schema
-    def generate_reference_schema(self):
+    def generate_reference_schema(self, vars_schema=None):
 
-        param = params.params["TRITON_" + self.db_type].copy()
+        if vars_schema is None or vars_schema == "QC":
+            vars_schema = "_QC"
+        elif not vars_schema == "_ALL":
+            raise ValueError("vars_schema must be 'QC' or '_ALL'.")
+
+        param = params.params["TRITON_" + self.db_type + vars_schema].copy()
 
         self.fields = []
         for p in param:
@@ -214,7 +219,7 @@ class Converter:
             self.fields.append(f)
 
         self.reference_schema = pa.schema( self.fields )
-        self.reference_schema_name = "TRITON_"+ self.db_type + "_schema.metadata"
+        self.reference_schema_name = "TRITON_"+ self.db_type  + vars_schema + "_schema.metadata"
 
 #------------------------------------------------------------------------------#
 ## Generating schema
@@ -319,7 +324,7 @@ class Converter:
             data = data.rename(rename_map)
             data_vars = data.data_vars.keys()
 
-        todrop = [c for c in data_vars if c not in params.params["TRITON_" + self.db_type]]
+        todrop = [c for c in data_vars if c not in params.params["TRITON_" + self.db_type + "_QC"]]
 
         if isinstance(data,pd.DataFrame):
             data = data.drop(columns=todrop, inplace=False)
@@ -333,10 +338,10 @@ class Converter:
         for col in data.columns:
             col_error = col+"_ERROR"
             col_qc = col+"_QC"
-            if (col_error in params.params["TRITON_" + self.db_type]) and (col_error not in data.columns):
+            if (col_error in params.params["TRITON_" + self.db_type + "_QC"]) and (col_error not in data.columns):
                 data[col_error] = pd.NA
                 data[col_error] = data[col_error].astype("float32[pyarrow]")
-            if (col_qc in params.params["TRITON_" + self.db_type]) and (col_qc not in data.columns):
+            if (col_qc in params.params["TRITON_" + self.db_type + "_QC"]) and (col_qc not in data.columns):
                 data[col_qc] = pd.NA
                 data[col_qc] = data[col_qc].astype("uint8[pyarrow]")
 
@@ -500,8 +505,6 @@ class Converter:
         self.schema_pd = self.__translate_pq_to_pd(self.schema_pq)
 
         return df
-
-##########################################################################
 
 ##########################################################################
 if __name__ == "__main__":

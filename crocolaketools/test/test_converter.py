@@ -22,29 +22,29 @@ import pytest
 
 from crocolaketools.converter.converterSprayGliders import ConverterSprayGliders
 from crocolaketools.converter.converterArgoQC import ConverterArgoQC
-from crocolaketools.utils import params
+from crocolakeloader import params
 ##########################################################################
 
 # FILL HERE YOUR DATABASE ROOTPATHS
-argo_phy_path = ''
-outdir_phy_pqt = ''
-argo_bgc_path = ''
-outdir_bgc_pqt = ''
+argo_phy_path = '/vortexfs1/share/boom/users/enrico.milanese/myDatabases/1011_PHY_ARGO-CLOUD/current'
+outdir_phy_pqt =  '/vortexfs1/share/boom/users/enrico.milanese/myDatabases/1002_PHY_ARGO-QC-DEV/tests/'
+argo_bgc_path = '/vortexfs1/share/boom/users/enrico.milanese/myDatabases/1011_BGC_ARGO-CLOUD/current'
+outdir_bgc_pqt =  '/vortexfs1/share/boom/users/enrico.milanese/myDatabases/1002_BGC_ARGO-QC-DEV/tests/'
 spray_path = ''
 outdir_spray_pqt = ''
 
-if not os.path.exists(outdir_phy_pqt):
-    raise ValueError("PHY output directory does not exist.")
-if not os.path.exists(outdir_bgc_pqt):
-    raise ValueError("BGC output directory does not exist.")
-if not os.path.exists(argo_phy_path):
-    raise ValueError("PHY input directory does not exist.")
-if not os.path.exists(argo_bgc_path):
-    raise ValueError("BGC input directory does not exist.")
-if not os.path.exists(spray_path):
-    raise ValueError("SprayGliders input directory does not exist.")
-if not os.path.exists(outdir_spray_pqt):
-    raise ValueError("SprayGliders output directory does not exist.")
+# if not os.path.exists(outdir_phy_pqt):
+#     raise ValueError("PHY output directory does not exist.")
+# if not os.path.exists(outdir_bgc_pqt):
+#     raise ValueError("BGC output directory does not exist.")
+# if not os.path.exists(argo_phy_path):
+#     raise ValueError("PHY input directory does not exist.")
+# if not os.path.exists(argo_bgc_path):
+#     raise ValueError("BGC input directory does not exist.")
+# if not os.path.exists(spray_path):
+#     raise ValueError("SprayGliders input directory does not exist.")
+# if not os.path.exists(outdir_spray_pqt):
+#     raise ValueError("SprayGliders output directory does not exist.")
 
 class TestConverter:
 
@@ -124,7 +124,7 @@ class TestConverter:
         print(ddf.head())
         assert not ddf.head().empty
 
-        for var in params.params["TRITON_BGC"]:
+        for var in params.params["TRITON_BGC_QC"]:
             if var in ddf.columns:
                 print(var)
                 if var in ["PLATFORM_NUMBER"]:
@@ -411,6 +411,150 @@ class TestConverter:
 
         assert ddf.equals(sol_df)
 
+    def test_converter_argoqc_keep_pos_juld_best_values_phy(self):
+        """
+        Test that the original data is correctly re-casted in the QC format
+        """
+
+        # the resulting QCed df should have temperature values of 20 or 25
+        dummy_data = {
+            "PLATFORM_NUMBER": [1000001, 1000002, 1000003, 1000004, 1000005, 1000006],
+            "LATITUDE": [35.1, 36.1, 37.1, -99.99, 39.1, 40.1],
+            "LONGITUDE": [-70.1, -71.1, -72.1, -999.99, -74.1, -75.1],
+            "POSITION_QC": [1, 2, 2, 9, 1, 1],
+            "JULD": pd.to_datetime(
+                ["2021-01-01", "1920-12-31", "2021-01-03", "2021-01-04", "2021-01-05", "2021-01-06"]
+            ),
+            "JULD_QC": [1, 3, 1, 1, 1, 1],
+            "TEMP": [20.1, 20.1, 20.1, 20.1, 20.1, 20.1],
+            "TEMP_QC": [1, 2, 2, 1, 1, 1],
+            "TEMP_ERROR": [0.02, 0.02, 0.02, 0.02, 0.02, 0.02],
+            "PSAL": [2.1, 2.1, 2.1, 2.1, 2.1, 2.1],
+            "PSAL_QC": [1, 2, 2, 1, 1, 1],
+            "PSAL_ERROR": [0.03, 0.03, 0.03, 0.03, 0.03, 0.03],
+            "PRES": [2.1, 2.1, 2.1, 2.1, 2.1, 2.1],
+            "PRES_QC": [1, 2, 2, 1, 1, 1],
+            "PRES_ERROR": [0.05, 0.05, 0.05, 0.05, 0.05, 0.05],
+            "DATA_MODE": ["R", "R", "R", "D", "D", "D"],
+        }
+
+        dummy_df = pd.DataFrame(dummy_data).convert_dtypes(dtype_backend='pyarrow')
+        for param in dummy_df.columns:
+            if param not in ["JULD", "DATA_MODE", "PLATFORM_NUMBER"] and "QC" not in param:
+                dummy_df[ param ] = dummy_df[ param ].astype("float32[pyarrow]")
+            elif "QC" in param:
+                dummy_df[ param ] = dummy_df[ param ].astype("uint8[pyarrow]")
+        print("Dummy data:")
+        print(f"memory usage: {dummy_df.memory_usage().sum()} bytes")
+        with pd.option_context('display.max_columns', None, 'display.width', terminal_width):
+            print(dummy_df)
+
+        sol_data = {
+            "PLATFORM_NUMBER": [1000001, 1000002, 1000003, 1000004, 1000005, 1000006],
+            "LATITUDE": [35.1, 36.1, 37.1, -99.99, 39.1, 40.1],
+            "LONGITUDE": [-70.1, -71.1, -72.1, -999.99, -74.1, -75.1],
+            "POSITION_QC": [1, 2, 2, 9, 1, 1],
+            "JULD": pd.to_datetime(
+                ["2021-01-01", "1920-12-31", "2021-01-03", "2021-01-04", "2021-01-05", "2021-01-06"]
+            ),
+            "JULD_QC": [1, 3, 1, 1, 1, 1],
+            "TEMP": [20.1, pd.NA, 20.1, pd.NA, 20.1, 20.1],
+            "TEMP_QC": [1, 2, 2, 1, 1, 1],
+            "TEMP_ERROR": [0.02, 0.02, 0.02, 0.02, 0.02, 0.02],
+            "PSAL": [2.1, pd.NA, 2.1, pd.NA, 2.1, 2.1],
+            "PSAL_QC": [1, 2, 2, 1, 1, 1],
+            "PSAL_ERROR": [0.03, 0.03, 0.03, 0.03, 0.03, 0.03],
+            "PRES": [2.1, pd.NA, 2.1, pd.NA, 2.1, 2.1],
+            "PRES_QC": [1, 2, 2, 1, 1, 1],
+            "PRES_ERROR": [0.05, 0.05, 0.05, 0.05, 0.05, 0.05],
+            "DATA_MODE": ["R", "R", "R", "D", "D", "D"],
+        }
+        sol_df = pd.DataFrame(sol_data).convert_dtypes(dtype_backend='pyarrow')
+        for param in sol_df.columns:
+            if param not in ["JULD", "DATA_MODE", "PLATFORM_NUMBER"] and "QC" not in param:
+                sol_df[ param ] = sol_df[ param ].astype("float32[pyarrow]")
+            elif "QC" in param:
+                sol_df[ param ] = sol_df[ param ].astype("uint8[pyarrow]")
+        print("Solution data:")
+        print(f"memory usage: {sol_df.memory_usage().sum()} bytes")
+        with pd.option_context('display.max_columns', None, 'display.width', terminal_width):
+            print(sol_df)
+
+        converterPHY = ConverterArgoQC(
+            db = "ARGO",
+            db_type="PHY",
+            input_path = argo_phy_path,
+            outdir_pq = outdir_phy_pqt,
+            outdir_schema = './schemas/ArgoQC/',
+            fname_pq = 'test_1002_PHY_ARGO-QC-DEV'
+        )
+        filters, param_basenames = converterPHY.generate_qc_schema_filters()
+        print("param_basenames:")
+        print(param_basenames)
+        converterPHY.param_basenames = param_basenames
+
+        # test pandas dataframe
+        df = dummy_df
+        df = converterPHY.keep_pos_juld_best_values(df, param_basenames)
+
+        # check columns names
+        print("Checking column names")
+        pd.testing.assert_frame_equal(
+            df,
+            sol_df,
+            check_dtype=False,
+            check_index_type=False,
+            check_column_type=False,
+            check_frame_type=False,
+            check_names=True,
+            check_exact=False
+        )
+
+        # check df dtype
+        print("Checking df dtype")
+        pd.testing.assert_frame_equal(
+            df,
+            sol_df,
+            check_dtype=True,
+            check_index_type=False,
+            check_column_type=False,
+            check_frame_type=False,
+            check_names=True,
+            check_exact=False
+        )
+
+        # check columns dtypes
+        print("Checking columns dtypes")
+        pd.testing.assert_frame_equal(
+            df,
+            sol_df,
+            check_dtype=True,
+            check_index_type=False,
+            check_column_type=True,
+            check_frame_type=False,
+            check_names=True,
+            check_exact=False
+        )
+
+        print("Resulting data (pandas):")
+        print(f"memory usage: {df.memory_usage().sum()} bytes")
+        with pd.option_context('display.max_columns', None, 'display.width', terminal_width):
+            print(df)
+
+        assert df.equals(sol_df)
+
+        # test dask dataframe
+        ddf = dd.from_pandas(dummy_df, npartitions=1)
+        ddf = dd.map_partitions(converterPHY.keep_pos_juld_best_values, ddf, param_basenames)
+        ddf = ddf.compute()
+
+        print("Resulting data (dask):")
+        print(f"memory usage: {ddf.memory_usage().sum()} bytes")
+        with pd.option_context('display.max_columns', None, 'display.width', terminal_width):
+            print(ddf)
+
+        assert ddf.equals(sol_df)
+
     def test_converter_argoqc_remove_all_NAs(self):
         """
         Test that the rows where all measurements are NA are removed
@@ -515,7 +659,7 @@ class TestConverter:
         ddf = converterBGC.read_pq(filename=fname)
         ddf = converterBGC.update_cols(ddf)
 
-        for var in params.params["TRITON_BGC"]:
+        for var in params.params["TRITON_BGC_QC"]:
             if var in ddf.columns:
                 print(var)
                 if var == "PLATFORM_NUMBER":

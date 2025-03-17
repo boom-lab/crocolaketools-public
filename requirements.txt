@@ -13,3 +13,4 @@ xarray==2024.2.0
 gsw==3.6.19
 bokeh==3.4.3
 pytest
+argopy
