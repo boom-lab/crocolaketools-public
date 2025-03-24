@@ -22,7 +22,9 @@ import pytest
 
 from crocolaketools.converter.converterSprayGliders import ConverterSprayGliders
 from crocolaketools.converter.converterArgoQC import ConverterArgoQC
+from crocolaketools.converter.converterCPR import ConverterCPR
 from crocolakeloader import params
+
 ##########################################################################
 
 # FILL HERE YOUR DATABASE ROOTPATHS
@@ -32,6 +34,8 @@ argo_bgc_path = '/vortexfs1/share/boom/users/enrico.milanese/myDatabases/1011_BG
 outdir_bgc_pqt =  '/vortexfs1/share/boom/users/enrico.milanese/myDatabases/1002_BGC_ARGO-QC-DEV/tests/'
 spray_path = ''
 outdir_spray_pqt = ''
+cpr_path = './dataset/'
+outdir_cpr_pqt = './dataset'
 
 # if not os.path.exists(outdir_phy_pqt):
 #     raise ValueError("PHY output directory does not exist.")
@@ -880,3 +884,97 @@ class TestConverter:
         converterSG.convert(["NASCar.nc", "Hawaii.nc"])
 
         client.shutdown()
+
+    def test_converter_cpr_read_to_df(self):
+        """
+        Test that the CPR CSV file is correctly read into a pandas DataFrame.
+        """
+        converter = ConverterCPR(
+            db="CPR",
+            db_type="PHY",
+            input_path=cpr_path,
+            outdir_pq=outdir_cpr_pqt,
+            outdir_schema="./schemas/CPR/",
+            fname_pq="test_cpr"
+        )
+
+        df = converter.read_to_df(filename="765141_v5_cpr-plankton-abundance.csv")
+
+        # Check that the DataFrame is not empty
+        assert not df.empty
+
+        # Check that required columns are present (after renaming)
+        required_columns = ["PLATFORM_NUMBER", "LATITUDE", "LONGITUDE", "JULD"]
+        for col in required_columns:
+            assert col in df.columns
+
+    def test_converter_cpr_standardize_data(self):
+        """
+        Test that the CPR DataFrame is correctly standardized.
+        """
+        converter = ConverterCPR(
+            db="CPR",
+            db_type="PHY",
+            input_path=cpr_path,
+            outdir_pq=outdir_cpr_pqt,
+            outdir_schema="./schemas/CPR/",
+            fname_pq="test_cpr"
+        )
+
+        sample_data = {
+            "SampleId": ["100DA-13", "100DA-14"],
+            "Latitude": [48.66, 49.66],
+            "Longitude": [-25.1733, -26.1733],
+            "MidPoint_Date_UTC": ["1972-10-24T06:05Z", "1972-10-25T06:05Z"],
+            "Year": [1972, 1972],
+            "Month": [10, 10],
+            "Day": [24, 25],
+            "Hour": [6, 6]
+        }
+        df = pd.DataFrame(sample_data)
+
+        # Standardize the DataFrame
+        standardized_df = converter.standardize_data(df)
+
+        # Check that the DataFrame is not empty
+        assert not standardized_df.empty
+
+        # Check that columns are renamed correctly
+        assert "PLATFORM_NUMBER" in standardized_df.columns
+        assert "LATITUDE" in standardized_df.columns
+        assert "LONGITUDE" in standardized_df.columns
+        assert "JULD" in standardized_df.columns
+
+        # Check that the date column is converted to datetime
+        assert str(standardized_df["JULD"].dtype) == "timestamp[ns][pyarrow]"
+
+    def test_converter_cpr_convert(self):
+        """
+        Test that the CPR CSV file is correctly converted to Parquet format.
+        """
+        # Ensure the output directory exists
+        os.makedirs(outdir_cpr_pqt, exist_ok=True)
+
+        converter = ConverterCPR(
+            db="CPR",
+            db_type="PHY",
+            input_path=cpr_path,
+            outdir_pq=outdir_cpr_pqt,
+            outdir_schema="./schemas/CPR/",
+            fname_pq="test_cpr"
+        )
+
+        # Convert a sample CPR CSV file
+        converter.convert(filenames="765141_v5_cpr-plankton-abundance.csv")  # Pass the filename here
+
+        # Check that the output Parquet file exists
+        output_files = glob.glob(os.path.join(outdir_cpr_pqt, "test_cpr_PHY*.parquet"))
+        assert len(output_files) > 0, "No output Parquet files found"
+
+        # Read the first Parquet file and check its contents
+        df = pd.read_parquet(output_files[0])
+        assert not df.empty
+        assert "PLATFORM_NUMBER" in df.columns
+        assert "LATITUDE" in df.columns
+        assert "LONGITUDE" in df.columns
+        assert "JULD" in df.columns

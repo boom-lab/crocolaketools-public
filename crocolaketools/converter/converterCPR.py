@@ -2,26 +2,30 @@
 
 ## @file converterCPR.py
 #
-# @brief Converts CPR (Continuous Plankton Recorder) data to the CrocoLake format.
 #
-# @author David Nady <davidnady4yad@gmail.com>
+## @author David Nady <davidnady4yad@gmail.com>
 #
-# @date Sat 1 Mar 2025
+## @date Fri 21 Mar 2025
 
 ##########################################################################
 import os
 import warnings
-import dask.dataframe as dd
-from dask.distributed import Lock
+import logging
 import pandas as pd
-import numpy as np
-from crocolaketools.utils import params
+from crocolakeloader import params
 from crocolaketools.converter.converter import Converter
-
 ##########################################################################
 
+# Set up logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
 class ConverterCPR(Converter):
-    """class ConverterCPR: methods to generate parquet schemas for CPR data."""
+
+    """class ConverterCPR: methods to generate parquet schemas for
+    Continuous Plankton Recorder (CPR) database
+
+    """
 
     # ------------------------------------------------------------------ #
     # Constructors/Destructors                                           #
@@ -30,84 +34,75 @@ class ConverterCPR(Converter):
     def __init__(self, db=None, db_type=None, input_path=None, outdir_pq=None, outdir_schema=None, fname_pq=None, add_derived_vars=False, overwrite=False):
         if not db == "CPR":
             raise ValueError("Database must be CPR.")
-        super().__init__(db, db_type, input_path, outdir_pq, outdir_schema, fname_pq, add_derived_vars, overwrite)
+        Converter.__init__(self, db, db_type, input_path, outdir_pq, outdir_schema, fname_pq, add_derived_vars, overwrite)
 
     # ------------------------------------------------------------------ #
     # Methods                                                            #
     # ------------------------------------------------------------------ #
 
     def read_to_df(self, filename=None, lock=None):
-        """
-        Read CPR data from a CSV file into a Pandas DataFrame.
+        """Read file into a pandas dataframe
 
-        Arguments:
-        filename -- path to the CPR data file
-        lock     -- optional lock for thread-safe file reading
+        Argument:
+        filename -- file name, including relative path
 
-        Returns:
-        df -- Pandas DataFrame containing the CPR data
+        Returns
+        df -- pandas dataframe
         """
+
         if filename is None:
-            filename = "765141_v5_cpr-plankton-abundance.csv"
+            raise ValueError("No filename provided for CPR database.")
 
-        input_fname = os.path.join(self.input_path, filename)
-        print(f"Reading CPR file: {input_fname}")
+        input_fname = self.input_path + filename
+        logger.info(f"Reading CPR file: {input_fname}")
 
-        df = pd.read_csv(input_fname)
+        try:
+            # Read the CSV file
+            df = pd.read_csv(input_fname, delimiter=",", header=0, low_memory=False)
+        except FileNotFoundError:
+            raise FileNotFoundError(f"File not found: {input_fname}")
+        except pd.errors.EmptyDataError:
+            raise ValueError(f"File is empty: {input_fname}")
+        except pd.errors.ParserError:
+            raise ValueError(f"Unable to parse file: {input_fname}")
 
-        # Convert MidPoint_Date_UTC to a datetime object
-        df["MidPoint_Date_UTC"] = pd.to_datetime(df["MidPoint_Date_UTC"])
-
-        df = self.standardize_data(df)
-
-        return df
+        return self.standardize_data(df)
 
     def standardize_data(self, df):
-        """
-        Standardize the CPR data to the TRITON format.
+        """Standardize pandas dataframe to schema consistent across databases
 
-        Arguments:
-        df -- Pandas DataFrame containing the CPR data
+        Argument:
+        df -- pandas dataframe
 
         Returns:
-        df -- Standardized Pandas DataFrame
+        df -- homogenized dataframe
         """
-        # Rename columns using the CPR2TRITON mapping
-        rename_map = params.params["CPR2TRITON"]
-        df = df.rename(columns=rename_map)
 
-        # Ensure the data types are correct
-        df["LATITUDE"] = df["LATITUDE"].astype("float64")
-        df["LONGITUDE"] = df["LONGITUDE"].astype("float64")
-        df["JULD"] = df["JULD"].dt.tz_localize(None)  # Remove timezone informationa
-        df["JULD"] = df["JULD"].astype("datetime64[ns]")
+        # Rename columns using CPR2TRITON mapping
+        df = df.rename(columns=params.params["CPR2TRITON"])
 
-        # Add derived variables (if needed)
-        if self.add_derived_vars:
-            df = self.add_derived_variables(df)
+        # Convert CPR date column to datetime
+        logger.info("Converting CPR date column to datetime")
+        if 'JULD' in df.columns:
+            df['JULD'] = pd.to_datetime(df['JULD'])
+        elif all(col in df.columns for col in ['Year', 'Month', 'Day', 'Hour']):
+            df['JULD'] = pd.to_datetime(df[['Year', 'Month', 'Day', 'Hour']])
+        else:
+            warnings.warn("No valid date columns found. Unable to construct 'JULD'.")
+
+        # Ensure data types match the Triton schema
+        if 'LATITUDE' in df.columns:
+            df['LATITUDE'] = df['LATITUDE'].astype('float32')
+        if 'LONGITUDE' in df.columns:
+            df['LONGITUDE'] = df['LONGITUDE'].astype('float32')
+        if 'PLATFORM_NUMBER' in df.columns:
+            df['PLATFORM_NUMBER'] = df['PLATFORM_NUMBER'].astype('string')
+
+        # Standardize data using the parent class method
+        df = super().standardize_data(df)
 
         return df
 
-    def add_derived_variables(self, df):
-        """
-        Add derived variables to the DataFrame.
-
-        Arguments:
-        df -- Pandas DataFrame containing the CPR data
-
-        Returns:
-        df -- DataFrame with derived variables added
-        """
-        # Create a copy to avoid modifying the input DataFrame
-        df_with_derived = df.copy()
-
-        # Columns starting with PLANKTON_ contain individual plankton counts (id)
-        plankton_columns = [col for col in df.columns if col.startswith("PLANKTON_")]
-        df_with_derived["TOTAL_PLANKTON"] = df[plankton_columns].fillna(0).sum(axis=1)
-
-        return df_with_derived
-
 ##########################################################################
-
 if __name__ == "__main__":
     ConverterCPR()
