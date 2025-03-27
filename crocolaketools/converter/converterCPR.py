@@ -5,7 +5,7 @@
 #
 ## @author David Nady <davidnady4yad@gmail.com>
 #
-## @date Fri 21 Mar 2025
+# @date Fri 21 Mar 2025
 
 ##########################################################################
 import os
@@ -98,7 +98,6 @@ class ConverterCPR(Converter):
         if 'PLATFORM_NUMBER' in df.columns:
             df['PLATFORM_NUMBER'] = df['PLATFORM_NUMBER'].astype('string')
 
-        # Standardize data using the parent class method
         df = super().standardize_data(df)
 
         return df

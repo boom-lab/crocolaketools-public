@@ -891,7 +891,7 @@ class TestConverter:
         """
         converter = ConverterCPR(
             db="CPR",
-            db_type="PHY",
+            db_type="BGC",
             input_path=cpr_path,
             outdir_pq=outdir_cpr_pqt,
             outdir_schema="./schemas/CPR/",
@@ -914,7 +914,7 @@ class TestConverter:
         """
         converter = ConverterCPR(
             db="CPR",
-            db_type="PHY",
+            db_type="BGC",
             input_path=cpr_path,
             outdir_pq=outdir_cpr_pqt,
             outdir_schema="./schemas/CPR/",
@@ -957,7 +957,7 @@ class TestConverter:
 
         converter = ConverterCPR(
             db="CPR",
-            db_type="PHY",
+            db_type="BGC",
             input_path=cpr_path,
             outdir_pq=outdir_cpr_pqt,
             outdir_schema="./schemas/CPR/",
@@ -968,7 +968,7 @@ class TestConverter:
         converter.convert(filenames="765141_v5_cpr-plankton-abundance.csv")  # Pass the filename here
 
         # Check that the output Parquet file exists
-        output_files = glob.glob(os.path.join(outdir_cpr_pqt, "test_cpr_PHY*.parquet"))
+        output_files = glob.glob(os.path.join(outdir_cpr_pqt, "test_cpr_BGC*.parquet"))
         assert len(output_files) > 0, "No output Parquet files found"
 
         # Read the first Parquet file and check its contents

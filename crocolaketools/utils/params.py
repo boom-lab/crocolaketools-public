@@ -573,7 +573,7 @@ params['CPR'] = [
     'Year',
     'Month',
     'Day',
-    'Hour'
+    'Hour',
 ]
 
 #
@@ -583,7 +583,7 @@ params["CPR2TRITON"] = {
     'SampleId' : 'PLATFORM_NUMBER',
     'Latitude' : 'LATITUDE',
     'Longitude' : 'LONGITUDE',
-    'MidPoint_Date_UTC' : 'JULD'
+    'MidPoint_Date_UTC' : 'JULD',
 }
 
 #------------------------------------------------------------------------------#
