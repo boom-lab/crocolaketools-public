@@ -12,19 +12,20 @@ from datetime import datetime
 from warnings import simplefilter
 from dask.distributed import Client
 import pandas as pd
+import argparse
 # ignore pandas "educational" performance warnings
 simplefilter(action="ignore", category=pd.errors.PerformanceWarning)
 from crocolaketools.converter.converterArgoQC import ConverterArgoQC
 ##########################################################################
 
-def argo2argoqc_bgc(argo_path,outdir_pqt,fname_pq):
+def argo2argoqc_bgc(argo_bgc_path,outdir_bgc_pqt,fname_pq):
     """Subset ARGO to QC-ed only data"""
 
     # this set up works
     # it seems that more workers or threads raises memory issues
     client = Client(
-        threads_per_worker=4,
-        n_workers=9,
+        threads_per_worker=9,
+        n_workers=4,
         memory_limit='36GiB', # memory limit per worker
         processes=True,
         dashboard_address='localhost:35784'

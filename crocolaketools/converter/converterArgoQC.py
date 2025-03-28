@@ -18,7 +18,7 @@ import pandas as pd
 import pyarrow as pa
 import pyarrow.parquet as pq
 import xarray as xr
-from crocolaketools.utils import params
+from crocolakeloader import params
 from crocolaketools.converter.converter import Converter
 ##########################################################################
 
@@ -64,7 +64,7 @@ class ConverterArgoQC(Converter):
         columns to match the format for higher QC data
 
         Arguments:
-        filename  --  (unused, needed for compatibility with super.read_to_df() )
+        filename  --  path to parquet database
         lock      --  (unused, needed for compatibility with super.read_to_df() )
 
         Returns:
@@ -163,6 +163,9 @@ class ConverterArgoQC(Converter):
                 cols_to_drop.append(to_drop_adj_err)
         ddf = ddf.drop(columns=cols_to_drop)
 
+        # keep only rows with good POSITION_QC and JULD_QC
+        ddf = ddf.map_partitions(self.keep_pos_juld_best_values, self.param_basenames)
+
         # remove rows with only NAs
         ddf = ddf.map_partitions(self.remove_all_NAs, self.param_basenames)#, meta=ddf)
 
@@ -187,40 +190,64 @@ class ConverterArgoQC(Converter):
         """Keep the best observation available for each row
 
         Arguments:
-        row  --  a row of a pandas dataframe containing Argo observations
+        df    --  a row of a pandas dataframe containing Argo observations
         param -- base name of the parameter to keep (i.e. <PARAM> in Argo
                       convetion)
+        data_mode_col -- data mode for param
 
         Returns:
-        param_value, param_qc, param_dm -- best value, quality flag and data mode
+        df  --  updated dataframe
         """
 
         # PHY has one DATA_MODE variable for all variables of each row
         # BGC has one DATA_MODE variable for each variable of each row
         #row_data_mode = row[data_mode_col]
 
-        condition_1 = ( ~df[param+"_ADJUSTED"].isna() ) & ( df[param + "_ADJUSTED_QC"].isin([1, 2]) ) & ( df[data_mode_col].isin(["A", "D"]) )
-        condition_2 = ( ~df[param].isna() ) & ( df[param+"_QC"].isin([1, 2]) ) & (df[data_mode_col] == "R")
+        # Find good QC values
+        condition_1 = ( ~df[param+"_ADJUSTED"].isna() ) & ( df[param + "_ADJUSTED_QC"].isin([1, 2, 5, 8]) ) & ( df[data_mode_col].isin(["A", "D"]) )
+        condition_2 = ( ~df[param].isna() ) & ( df[param+"_QC"].isin([1, 2, 5, 8]) ) & (df[data_mode_col] == "R")
         condition_3 = ~(condition_1 | condition_2)
 
+        # Keep best values reducing the number of columns
         df.loc[condition_1, param] = df.loc[condition_1, param+"_ADJUSTED"]
         df.loc[condition_1, param+"_QC"] = df.loc[condition_1, param+"_ADJUSTED_QC"]
         df.loc[condition_1, param+"_ERROR"] = df.loc[condition_1, param+"_ADJUSTED_ERROR"]
 
-        #df.loc[condition_2, param] = df.loc[condition_2, param]
-        #df.loc[condition_2, param+"_QC"] = df.loc[condition_2, param+"_QC"]
+        # Fill param columns with NA values otherwise
         df.loc[condition_2, param+"_ERROR"] = pd.NA
-
         df.loc[condition_3, param] = pd.NA
         df.loc[condition_3, param+"_QC"] = pd.NA
         df.loc[condition_3, param+"_ERROR"] = pd.NA
 
+        # Convert columns to the right type
         if df[param].dtypes != "float32[pyarrow]":
             df[param] = df[param].astype("float32[pyarrow]")
         if df[param+"_QC"].dtypes != "uint8[pyarrow]":
             df[param+"_QC"] = df[param+"_QC"].astype("uint8[pyarrow]")
         if df[param+"_ERROR"].dtypes != "float32[pyarrow]":
             df[param+"_ERROR"] = df[param+"_ERROR"].astype("float32[pyarrow]")
+
+        return df
+
+#------------------------------------------------------------------------------#
+## Keep only rows with good POSITION_QC and JULD_QC
+    def keep_pos_juld_best_values(self,df,cols_used):
+        """Discard observations if we don't have a good position and time
+
+        Arguments:
+        df    --  a row of a pandas dataframe containing Argo observations
+        cols_used -- list of columns to check for NA values later
+
+        Returns:
+        df  --  updated dataframe
+        """
+
+        # Find good QC values
+        condition_pos_juld = ( df["POSITION_QC"].isin([1, 2, 5, 8]) ) & ( df["JULD_QC"].isin([1, 2, 5, 8]) )
+
+        # Fill whole row with NA values if POSITION_QC or JULD_QC are not good
+        # (rows with all NAs will be removed later)
+        df.loc[~condition_pos_juld, cols_used] = pd.NA
 
         return df
 

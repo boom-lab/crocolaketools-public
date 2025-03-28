@@ -9,7 +9,7 @@ def parse_requirements(filename):
 
 setup(
     name='crocolaketools',
-    version='1.0.0',
+    version='1.0.1',
     description='Package to generate and load CrocoLake',
     license="GNU GPLv3",
     long_description=long_description,
@@ -20,10 +20,11 @@ setup(
     entry_points={
         'console_scripts': [
             'crocolaketools = scripts.main:main',
-            'argo2argoqc_phy = scripts.argo2argoqc_phy:argo2argoqc_phy',
-            'argo2argoqc_bgc = scripts.argo2argoqc_bgc:argo2argoqc_bgc',
+            'argo2argoqc_phy = scripts.argo2argoqc_phy:main',
+            'argo2argoqc_bgc = scripts.argo2argoqc_bgc:main',
             'glodap2parquet = scripts.glodap2parquet:glodap2parquet',
             'spray2parquet = scripts.spray2parquet:spray2parquet',
+            'argogdac2parquet = scripts.argogdac2parquet:argogdac2parquet',
         ],
     },
 )
