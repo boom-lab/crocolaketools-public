@@ -34,8 +34,8 @@ argo_bgc_path = '/vortexfs1/share/boom/users/enrico.milanese/myDatabases/1011_BG
 outdir_bgc_pqt =  '/vortexfs1/share/boom/users/enrico.milanese/myDatabases/1002_BGC_ARGO-QC-DEV/tests/'
 spray_path = ''
 outdir_spray_pqt = ''
-cpr_path = './dataset/'
-outdir_cpr_pqt = './dataset'
+cpr_path = 'D:\GSoC\Temp\crocolaketools-public\crocolaketools\\test\dataset\\'
+outdir_cpr_pqt = 'D:\GSoC\Temp\crocolaketools-public\crocolaketools\\test\output\\'
 
 # if not os.path.exists(outdir_phy_pqt):
 #     raise ValueError("PHY output directory does not exist.")
