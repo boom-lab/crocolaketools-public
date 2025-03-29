@@ -15,12 +15,13 @@
 #------------------------------------------------------------------------------#
 #
 # List of databases and their folder names
-databases = ["ARGO", "GLODAP", "SprayGliders"]
+databases = ["ARGO", "GLODAP", "SprayGliders", "CPR"]
 
 databases_codenames = {}
 databases_codenames["ARGO"] = "ARGO" #"ARGO-CLOUD"
 databases_codenames["GLODAP"] = "GLODAP"#"GLODAP-DEV"
 databases_codenames["SprayGliders"] = "SPRAY"#"SPRAY-DEV"
+databases_codenames["CPR"] = "CPR"#"CPR-DEV"
 
 params = {}
 
@@ -559,13 +560,38 @@ params["SprayGliders2TRITON"] = {
     'time': 'JULD',
 }
 
+#------------------------------------------------------------------------------#
+# CPR (Continuous Plankton Recorder)
+#
+# original names of parameters to keep
 
+params['CPR'] = [
+    'SampleId',
+    'Latitude',
+    'Longitude',
+    'MidPoint_Date_UTC',
+    'Year',
+    'Month',
+    'Day',
+    'Hour'
+]
+
+#
+# dict for renaming parameters to triton names
+#
+params["CPR2TRITON"] = {
+    'SampleId' : 'PLATFORM_NUMBER',
+    'Latitude' : 'LATITUDE',
+    'Longitude' : 'LONGITUDE',
+    'MidPoint_Date_UTC' : 'JULD'
+}
 
 #------------------------------------------------------------------------------#
 # Argo
 #
 # standardized names for Argo only databases, when converting from GDAC
 #
+
 params["ArgoPHY"] = [
     'PLATFORM_NUMBER',
     'N_PROF',
