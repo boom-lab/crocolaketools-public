@@ -24,7 +24,7 @@ CrocoLakeTools is a Python package designed to generate CrocoLake, a database of
 To contribute to CrocoLakeTools, please follow these steps:
 
 1. **Fork the Repository**: Fork the [CrocoLakeTools repository](https://github.com/boom-lab/crocolaketools-public.git) to your own GitHub account.
-2. **Create a Branch**: Create a new branch for your feature. The recommended workflow is the [git workflow](https://nvie.com/posts/a-successful-git-branching-model/)
+2. **Create a Branch**: Create a new branch for your feature. The recommended workflow is the [git workflow](https://nvie.com/posts/a-successful-git-branching-model/), so you'll probably want to branch off of `develop`.
 3. **Make Changes**: Make your changes in the new branch.
 4. **Commit Changes**: Commit your changes with clear and descriptive commit messages.
 5. **Push to Fork**: Push your changes to your forked repository.

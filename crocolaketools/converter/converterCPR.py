@@ -14,10 +14,6 @@ import logging
 import pandas as pd
 from crocolakeloader import params
 from crocolaketools.converter.converter import Converter
-print("ii")
-print(params.databases)
-
-
 ##########################################################################
 
 # Set up logging

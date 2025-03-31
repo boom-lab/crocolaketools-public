@@ -19,10 +19,6 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 import xarray as xr
 from crocolakeloader import params
-print("i")
-print(params.databases)
-print("path")
-print(params.__file__)
 ##########################################################################
 
 
