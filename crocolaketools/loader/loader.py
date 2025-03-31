@@ -69,9 +69,9 @@ class Loader:
         print("Looking for data in " + self.db_rootpath)
 
         if "QC" in self.db_rootpath:
-            admitted_vars = params.params["TRITON_"+self.db_type+"_QC"]
+            admitted_vars = params.params["CROCOLAKE_"+self.db_type+"_QC"]
         else:
-            admitted_vars = params.params["TRITON_"+self.db_type+"_ALL"]
+            admitted_vars = params.params["CROCOLAKE_"+self.db_type+"_ALL"]
         if isinstance(selected_variables,str):
             selected_variables = [selected_variables]
         if selected_variables is None:

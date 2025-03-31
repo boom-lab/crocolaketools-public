@@ -25,14 +25,14 @@ class TestLoader:
         loader = Loader()
         assert loader.db_list == params.databases
         assert loader.db_type == "PHY"
-        assert loader.selected_variables == params.params["TRITON_PHY"]
+        assert loader.selected_variables == params.params["CROCOLAKE_PHY"]
 
     def test_loader_db_list(self):
         "Test the Loader constructor with a list of databases"
         loader = Loader(db_list=["ARGO","SprayGliders"])
         assert loader.db_list == ["ARGO","SprayGliders"]
         assert loader.db_type == "PHY"
-        assert loader.selected_variables == params.params["TRITON_PHY"]
+        assert loader.selected_variables == params.params["CROCOLAKE_PHY"]
 
     def test_loader_wrong_db_list(self):
         "Test the Loader constructor with a list of databases"
@@ -44,7 +44,7 @@ class TestLoader:
         loader = Loader(db_list="ARGO")
         assert loader.db_list == ["ARGO"]
         assert loader.db_type == "PHY"
-        assert loader.selected_variables == params.params["TRITON_PHY"]
+        assert loader.selected_variables == params.params["CROCOLAKE_PHY"]
 
     def test_loader_wrong_db_string(self):
         "Test the Loader constructor with a list of databases"
@@ -57,7 +57,7 @@ class TestLoader:
             loader = Loader(db_type="BGC")
         assert loader.db_list == ['ARGO', 'GLODAP']
         assert loader.db_type == "BGC"
-        assert loader.selected_variables == params.params["TRITON_BGC"]
+        assert loader.selected_variables == params.params["CROCOLAKE_BGC"]
 
     def test_loader_wrong_rootpath(self):
         "Test the Loader constructor with non-existing database rootpath"
@@ -95,7 +95,7 @@ class TestLoader:
         "Test the Loader get_dataframe method for PHY database"
         # not all databases have the variable "DB_NAME", so I am testing for all
         # but that one
-        selected_variables = [name for name in params.params["TRITON_PHY"] if name != "DB_NAME"]
+        selected_variables = [name for name in params.params["CROCOLAKE_PHY"] if name != "DB_NAME"]
         loader = Loader(
             selected_variables=selected_variables,
             db_type="PHY"
@@ -107,7 +107,7 @@ class TestLoader:
         "Test the Loader get_dataframe method for BGC database"
         # not all databases have the variable "DB_NAME", so I am testing for all
         # but that one
-        selected_variables = [name for name in params.params["TRITON_BGC"] if name != "DB_NAME"]
+        selected_variables = [name for name in params.params["CROCOLAKE_BGC"] if name != "DB_NAME"]
         with pytest.warns(UserWarning):
             loader = Loader(
                 selected_variables=selected_variables,

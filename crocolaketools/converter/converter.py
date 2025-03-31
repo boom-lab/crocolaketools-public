@@ -19,6 +19,10 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 import xarray as xr
 from crocolakeloader import params
+print("i")
+print(params.databases)
+print("path")
+print(params.__file__)
 ##########################################################################
 
 
@@ -47,6 +51,7 @@ class Converter:
         """
 
         if isinstance(db,str):
+            print(params.databases)
             if db in params.databases:
                 self.db = db
                 print("Setting up converter for " + self.db + " database.")
@@ -189,7 +194,7 @@ class Converter:
         elif not vars_schema == "_ALL":
             raise ValueError("vars_schema must be 'QC' or '_ALL'.")
 
-        param = params.params["TRITON_" + self.db_type + vars_schema].copy()
+        param = params.params["CROCOLAKE_" + self.db_type + vars_schema].copy()
 
         self.fields = []
         for p in param:
@@ -219,7 +224,7 @@ class Converter:
             self.fields.append(f)
 
         self.reference_schema = pa.schema( self.fields )
-        self.reference_schema_name = "TRITON_"+ self.db_type  + vars_schema + "_schema.metadata"
+        self.reference_schema_name = "CROCOLAKE_"+ self.db_type  + vars_schema + "_schema.metadata"
 
 #------------------------------------------------------------------------------#
 ## Generating schema
@@ -246,7 +251,7 @@ class Converter:
         todrop = [item for item in self.schema_pq.names if item not in param_names]
 
         if len(todrop) == len(self.schema_pq.names):
-            raise Exception("All fields removed from schema. Are you sure you renamed the dataframe's columns to TRITON's standard names?")
+            raise Exception("All fields removed from schema. Are you sure you renamed the dataframe's columns to CROCOLAKE's standard names?")
 
         for p in todrop:
             idx = self.schema_pq.get_field_index(p)
@@ -255,7 +260,7 @@ class Converter:
                 idcs = self.schema_pq.get_all_field_indices(p)
                 if len(idcs) > 1:
                     raise ValueError(p + " found multiple times in schema.")
-                raise ValueError(p + " not found in schema; are you sure you renamed the dataframe's columns to TRITON's standard names?")
+                raise ValueError(p + " not found in schema; are you sure you renamed the dataframe's columns to CROCOLAKE's standard names?")
             else:
                 self.schema_pq = self.schema_pq.remove(idx)
 
@@ -315,7 +320,7 @@ class Converter:
         """
 
         print("Renaming columns")
-        rename_map = params.params[self.db + "2TRITON"]
+        rename_map = params.params[self.db + "2CROCOLAKE"]
 
         if isinstance(data,pd.DataFrame):
             data = data.rename(columns=rename_map)
@@ -324,7 +329,7 @@ class Converter:
             data = data.rename(rename_map)
             data_vars = data.data_vars.keys()
 
-        todrop = [c for c in data_vars if c not in params.params["TRITON_" + self.db_type + "_QC"]]
+        todrop = [c for c in data_vars if c not in params.params["CROCOLAKE_" + self.db_type + "_QC"]]
 
         if isinstance(data,pd.DataFrame):
             data = data.drop(columns=todrop, inplace=False)
@@ -338,10 +343,10 @@ class Converter:
         for col in data.columns:
             col_error = col+"_ERROR"
             col_qc = col+"_QC"
-            if (col_error in params.params["TRITON_" + self.db_type + "_QC"]) and (col_error not in data.columns):
+            if (col_error in params.params["CROCOLAKE_" + self.db_type + "_QC"]) and (col_error not in data.columns):
                 data[col_error] = pd.NA
                 data[col_error] = data[col_error].astype("float32[pyarrow]")
-            if (col_qc in params.params["TRITON_" + self.db_type + "_QC"]) and (col_qc not in data.columns):
+            if (col_qc in params.params["CROCOLAKE_" + self.db_type + "_QC"]) and (col_qc not in data.columns):
                 data[col_qc] = pd.NA
                 data[col_qc] = data[col_qc].astype("uint8[pyarrow]")
 
