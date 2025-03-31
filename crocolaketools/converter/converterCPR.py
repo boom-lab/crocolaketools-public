@@ -14,6 +14,10 @@ import logging
 import pandas as pd
 from crocolakeloader import params
 from crocolaketools.converter.converter import Converter
+print("ii")
+print(params.databases)
+
+
 ##########################################################################
 
 # Set up logging
@@ -78,8 +82,8 @@ class ConverterCPR(Converter):
         df -- homogenized dataframe
         """
 
-        # Rename columns using CPR2TRITON mapping
-        df = df.rename(columns=params.params["CPR2TRITON"])
+        # Rename columns using CPR2CROCOLAKE mapping
+        df = df.rename(columns=params.params["CPR2CROCOLAKE"])
 
         # Convert CPR date column to datetime
         logger.info("Converting CPR date column to datetime")
@@ -90,7 +94,7 @@ class ConverterCPR(Converter):
         else:
             warnings.warn("No valid date columns found. Unable to construct 'JULD'.")
 
-        # Ensure data types match the Triton schema
+        # Ensure data types match the Crocolake schema
         if 'LATITUDE' in df.columns:
             df['LATITUDE'] = df['LATITUDE'].astype('float32')
         if 'LONGITUDE' in df.columns:

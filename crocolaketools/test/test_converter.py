@@ -28,10 +28,10 @@ from crocolakeloader import params
 ##########################################################################
 
 # FILL HERE YOUR DATABASE ROOTPATHS
-argo_phy_path = '/vortexfs1/share/boom/users/enrico.milanese/myDatabases/1011_PHY_ARGO-CLOUD/current'
-outdir_phy_pqt =  '/vortexfs1/share/boom/users/enrico.milanese/myDatabases/1002_PHY_ARGO-QC-DEV/tests/'
-argo_bgc_path = '/vortexfs1/share/boom/users/enrico.milanese/myDatabases/1011_BGC_ARGO-CLOUD/current'
-outdir_bgc_pqt =  '/vortexfs1/share/boom/users/enrico.milanese/myDatabases/1002_BGC_ARGO-QC-DEV/tests/'
+argo_phy_path = ''
+outdir_phy_pqt =  ''
+argo_bgc_path = ''
+outdir_bgc_pqt =  ''
 spray_path = ''
 outdir_spray_pqt = ''
 cpr_path = ''
@@ -128,7 +128,7 @@ class TestConverter:
         print(ddf.head())
         assert not ddf.head().empty
 
-        for var in params.params["TRITON_BGC_QC"]:
+        for var in params.params["CROCOLAKE_BGC_QC"]:
             if var in ddf.columns:
                 print(var)
                 if var in ["PLATFORM_NUMBER"]:
@@ -663,7 +663,7 @@ class TestConverter:
         ddf = converterBGC.read_pq(filename=fname)
         ddf = converterBGC.update_cols(ddf)
 
-        for var in params.params["TRITON_BGC_QC"]:
+        for var in params.params["CROCOLAKE_BGC_QC"]:
             if var in ddf.columns:
                 print(var)
                 if var == "PLATFORM_NUMBER":
