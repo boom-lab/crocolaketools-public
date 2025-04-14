@@ -47,7 +47,6 @@ class Converter:
         """
 
         if isinstance(db,str):
-            print(params.databases)
             if db in params.databases:
                 self.db = db
                 print("Setting up converter for " + self.db + " database.")
@@ -126,9 +125,11 @@ class Converter:
             print("reading reference files")
             ddf = dd.from_map(self.read_to_df,filenames,lock=lock)
         else:
-            ddf = dd.from_pandas(
-                self.read_to_df(filenames[0],lock)
-                )
+            df = self.read_to_df(filenames[0],lock)
+            if isinstance(df,pd.DataFrame):
+                ddf = dd.from_pandas(df)
+            elif isinstance(df,dd.DataFrame):
+                ddf = df
 
         if self.add_derived_vars:
             print("adding derived variables")
@@ -309,7 +310,7 @@ class Converter:
         """Standardize pandas dataframe to schema consistent across databases
 
         Argument:
-        data -- pandas dataframe or xarray dataset
+        data -- pandas or dask dataframe or xarray dataset
 
         Returns:
         data -- homogenized pandas dataframe
@@ -318,7 +319,7 @@ class Converter:
         print("Renaming columns")
         rename_map = params.params[self.db + "2CROCOLAKE"]
 
-        if isinstance(data,pd.DataFrame):
+        if isinstance(data,(pd.DataFrame,dd.DataFrame)):
             data = data.rename(columns=rename_map)
             data_vars = data.columns.to_list()
         elif isinstance(data,xr.Dataset):
@@ -327,8 +328,8 @@ class Converter:
 
         todrop = [c for c in data_vars if c not in params.params["CROCOLAKE_" + self.db_type + "_QC"]]
 
-        if isinstance(data,pd.DataFrame):
-            data = data.drop(columns=todrop, inplace=False)
+        if isinstance(data,(pd.DataFrame,dd.DataFrame)):
+            data = data.drop(columns=todrop) #inplace defaults to False
         elif isinstance(data,xr.Dataset):
             data = data.drop_vars(todrop)
             data = data.to_dataframe()
@@ -506,6 +507,38 @@ class Converter:
         self.schema_pd = self.__translate_pq_to_pd(self.schema_pq)
 
         return df
+
+#------------------------------------------------------------------------------#
+## Remove row if all measurements are NA
+    def remove_all_NAs(self,df,cols_to_check):
+        """Remove rows with all NA values
+
+        Arguments:
+        df  --  pandas dataframe
+        cols_to_check -- list of columns to check for NA values
+
+        Returns:
+        df -- dataframe with rows removed
+        """
+
+        condition_na = df[ cols_to_check ].isna().all(axis="columns")
+        df = df.loc[~condition_na]
+        df.reset_index(drop=True, inplace=True)
+
+        return df
+
+#------------------------------------------------------------------------------#
+## Update columns
+    def update_cols(self):
+        """Update columns to keep the best values for each row, add database
+        name, and remove extra columns"""
+        raise NotImplementedError("Subclasses must implement this method")
+
+#------------------------------------------------------------------------------#
+## Keep best values for each row
+    def keep_best_values(self):
+        """Keep the best observation available for each row"""
+        raise NotImplementedError("Subclasses must implement this method")
 
 ##########################################################################
 if __name__ == "__main__":
