@@ -91,7 +91,7 @@ The `examples` folder contains examples for how to access parquet datasets with 
 Documentation is available at [TD add link]. It describes the CrocoLake dataset, thesub-datasets that it is made, and how they are obtained. It provides references to the original files origins for download before converting them.
 
 ## Citation
-If you use CrocoLakeTools and/or CrocoLake, do not limit yourself to citing this manuscript. Remember to cite the datasets that you have used as indicated in the documentation. For example, if your work relies on Argo measurements, (https://argo.ucsd.edu/data/acknowledging-argo/)[acknowledge Argo]. This is important for each product to track their impact. 
+If you use CrocoLakeTools and/or CrocoLake, do not limit yourself to citing this manuscript. Remember to cite the datasets that you have used as indicated in the documentation. For example, if your work relies on Argo measurements, acknowledge Argo [@wong2020argo]. This is important for each product to track their impact. 
 
 
 
