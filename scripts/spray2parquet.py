@@ -37,7 +37,7 @@ def spray2parquet(spray_path, outdir_pqt, fname_pq_phy, fname_pq_bgc):
     outdir_pqt_phy = outdir_pqt_phy + 'current/'
     outdir_pqt_bgc = outdir_pqt_bgc + 'current/'
 
-    tmp_nc_path = "./tmp_nc_chunks/"
+    tmp_nc_path = outdir_pqt + '1201_SPRAY_tmp/'
 
     spray_files = glob.glob(os.path.join(spray_path, '*.nc'))
     spray_names = [os.path.basename(f) for f in spray_files]
@@ -72,6 +72,8 @@ def spray2parquet(spray_path, outdir_pqt, fname_pq_phy, fname_pq_bgc):
         add_derived_vars = True,
         tmp_path = tmp_nc_path
     )
+
+    return
 
     print("Creating temporary files...")
     ConverterPHY.prepare_data(

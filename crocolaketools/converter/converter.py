@@ -114,6 +114,8 @@ class Converter:
                 tmp_path = tmp_path + "/"
             self.tmp_path = tmp_path
 
+        print("Temporary files will be stored at " + self.tmp_path)
+
         self.overwrite = overwrite
 
         self.tmp_paths_to_remove = None
