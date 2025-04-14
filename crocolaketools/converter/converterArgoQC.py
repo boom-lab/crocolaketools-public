@@ -167,7 +167,7 @@ class ConverterArgoQC(Converter):
         ddf = ddf.map_partitions(self.keep_pos_juld_best_values, self.param_basenames)
 
         # remove rows with only NAs
-        ddf = ddf.map_partitions(self.remove_all_NAs, self.param_basenames)#, meta=ddf)
+        ddf = ddf.map_partitions(super().remove_all_NAs, self.param_basenames)
 
         # add database name if not present
         if "DB_NAME" not in ddf.columns:
@@ -186,7 +186,6 @@ class ConverterArgoQC(Converter):
 #------------------------------------------------------------------------------#
 ## Keep best values for each row
     def keep_best_values(self,df,param,data_mode_col):
-    # def keep_best_values(self,row,param,data_mode_col):
         """Keep the best observation available for each row
 
         Arguments:
@@ -248,29 +247,6 @@ class ConverterArgoQC(Converter):
         # Fill whole row with NA values if POSITION_QC or JULD_QC are not good
         # (rows with all NAs will be removed later)
         df.loc[~condition_pos_juld, cols_used] = pd.NA
-
-        return df
-
-#------------------------------------------------------------------------------#
-## Remove row if all measurements are NA
-    def remove_all_NAs(self,df,cols_to_check):
-        """Remove rows with all NA values
-
-        Arguments:
-        df  --  dataframe (needed to use this function with dd.map_partitions)
-
-        Returns:
-        df -- dataframe with rows removed
-        """
-
-        condition_na = df[ cols_to_check ].isna().all(axis="columns")
-        df = df.loc[~condition_na]
-        df.reset_index(drop=True, inplace=True)
-
-        # print("Removed ", condition_na.sum(), " rows with all NA values")
-        # print("df:")
-        # with pd.option_context('display.max_columns', None):
-        #     print(df)
 
         return df
 

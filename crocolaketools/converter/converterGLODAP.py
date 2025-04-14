@@ -11,7 +11,6 @@
 import os
 import warnings
 import dask.dataframe as dd
-from dask.distributed import Lock
 import gsw
 import numpy as np
 import pandas as pd
@@ -61,20 +60,27 @@ class ConverterGLODAP(Converter):
         print("Reading GLODAP file: ", input_fname)
 
         # low_memory=False as GLODAP is a small db
-        df = pd.read_csv(input_fname, delimiter=",", header=0, low_memory=False)
+        ddf = dd.read_csv(
+            input_fname,
+            assume_missing=True,
+            delimiter=",",
+            header=0,
+            low_memory=False,
+            dtype_backend='pyarrow'
+        )
 
-        return self.standardize_data(df)
+        return self.standardize_data(ddf)
 
 #------------------------------------------------------------------------------#
 ## Convert parquet schema to pandas
-    def standardize_data(self,df):
-        """Standardize pandas dataframe to schema consistent across databases
+    def standardize_data(self,ddf):
+        """Standardize dask dataframe to schema consistent across databases
 
         Argument:
-        df -- pandas dataframe
+        ddf -- dask dataframe
 
         Returns:
-        df -- homogenized dataframe
+        ddf -- homogenized (dask) dataframe
         """
 
         # convert GLODAP multiple time columns to one datetime
@@ -86,10 +92,49 @@ class ConverterGLODAP(Converter):
             "G2hour": "hour",
             "G2minute": "minute"
         }
-        df = df.rename(columns=rename_datetime) #pd.to_datetime expects these column names
-        df["JULD"] = pd.to_datetime(df[["year", "month", "day", "hour", "minute"]])
+        ddf = ddf.rename(columns=rename_datetime) #pd.to_datetime expects these column names
+        ddf["JULD"] = dd.to_datetime(ddf[["year", "month", "day", "hour", "minute"]])
 
-        return super().standardize_data(df)
+        # keep only good QC values
+        params_to_check = []
+        for param in params.params["GLODAP2CROCOLAKE"].keys():
+            if param.endswith("f") and param in ddf.columns:
+                ddf = ddf.map_partitions(
+                    self.keep_best_values, param
+                )
+                params_to_check.append(param[:-1])
+
+        # remove rows containing all NAs
+        ddf = ddf.map_partitions(
+            super().remove_all_NAs, params_to_check
+        )
+
+        # return standardized dataframe
+        return super().standardize_data(ddf)
+
+#------------------------------------------------------------------------------#
+## Keep best values for each row
+    def keep_best_values(self,df,param):
+        """Keep the best observation available for each row
+
+        Arguments:
+        df -- a row or a partition of a pandas dataframe
+        param -- name of the qc variable of the parameter
+
+        Returns:
+        df  --  updated dataframe
+
+        """
+
+        # GLODAP's quality control columns end with "f" (e.g. "nitratef")
+        # and good values are 0 or 2
+        condition = df[param].isin([0,2])
+
+        # Find bad QC values
+        df.loc[condition, param] = pd.NA
+        df.loc[condition, param[:-1]] = pd.NA
+
+        return df
 
 ##########################################################################
 if __name__ == "__main__":
