@@ -15,13 +15,14 @@
 #------------------------------------------------------------------------------#
 #
 # List of databases and their folder names
-databases = ["ARGO", "GLODAP", "SprayGliders", "CPR"]
+databases = ["ARGO", "GLODAP", "SprayGliders", "CPR", "Saildrones"]
 
 databases_codenames = {}
 databases_codenames["ARGO"] = "ARGO" #"ARGO-CLOUD"
 databases_codenames["GLODAP"] = "GLODAP"#"GLODAP-DEV"
 databases_codenames["SprayGliders"] = "SPRAY"#"SPRAY-DEV"
 databases_codenames["CPR"] = "CPR"#"CPR-DEV"
+databases_codenames["Saildrones"] = "SAILDRONES"#"SAILDRONES-DEV"
 
 params = {}
 
