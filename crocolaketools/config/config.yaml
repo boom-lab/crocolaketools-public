@@ -1,0 +1,66 @@
+# one config per conversion (glodap2parquet, etc)
+# config is read only by converters or downloaders (not by script)
+# every converter needs a config file, no rogue arguments anymore
+
+# Argo QC
+ARGO_PHY:
+  db: ARGO
+  db_type: PHY
+  input_path:
+  outdir_pq:
+  outdir_schema: ./schema/
+  fname_pq:
+  add_derived_vars: True
+  overwrite: False
+
+ARGO_BGC:
+  db: ARGO
+  db_type: BGC
+  input_path:
+  outdir_pq:
+  outdir_schema: ./schema/
+  fname_pq:
+  add_derived_vars: True
+  overwrite: False
+
+# GLODAP config
+GLODAP_PHY:
+  db: GLODAP
+  db_type: PHY
+  input_path: /home/enrico/myWHOI/databases/GLODAP/v2.2023/
+  outdir_pq: /home/enrico/myWHOI/databases/GLODAP/v2.2023/parquet/
+  outdir_schema: ./schema/
+  fname_pq: GLODAPv2.2023_Merged_Master_File
+  add_derived_vars: False
+  overwrite: False
+
+GLODAP_BGC:
+  db: GLODAP
+  db_type: BGC
+  input_path: /home/enrico/myWHOI/databases/GLODAP/v2.2023/
+  outdir_pq: /home/enrico/myWHOI/databases/GLODAP/v2.2023/parquet_bgc/
+  outdir_schema: ./schema/
+  fname_pq: GLODAPv2.2023_Merged_Master_File
+  add_derived_vars: True
+  overwrite: False
+
+# Spray Gliders
+SprayGliders_PHY:
+  db: SprayGliders
+  db_type: PHY
+  input_path:
+  outdir_pq:
+  outdir_schema: ./schema/
+  fname_pq:
+  add_derived_vars: True
+  overwrite: False
+
+SprayGliders_BGC:
+  db: SprayGliders
+  db_type: BGC
+  input_path:
+  outdir_pq:
+  outdir_schema: ./schema/
+  fname_pq:
+  add_derived_vars: True
+  overwrite: False

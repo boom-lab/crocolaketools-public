@@ -33,10 +33,17 @@ class ConverterSprayGliders(Converter):
     # Constructors/Destructors                                           #
     # ------------------------------------------------------------------ #
 
-    def __init__(self, db=None, db_type=None, input_path=None, outdir_pq=None, outdir_schema=None, fname_pq=None, add_derived_vars=False, overwrite=False):
-        if not db == "SprayGliders":
+    def __init__(self, config=None, db_type=None):
+
+        if config is not None and not config['db'] == "SprayGliders":
             raise ValueError("Database must be SprayGliders.")
-        Converter.__init__(self, db, db_type, input_path, outdir_pq, outdir_schema, fname_pq, add_derived_vars, overwrite)
+        elif ((config is None) and (db_type is not None)):
+            config = {
+                'db': 'SprayGliders',
+                'db_type': db_type.upper(),
+            }
+
+        Converter.__init__(self, config)
 
     # ------------------------------------------------------------------ #
     # Methods                                                            #

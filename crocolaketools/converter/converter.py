@@ -9,10 +9,12 @@
 
 ##########################################################################
 import os
+import yaml
 import warnings
 import dask.dataframe as dd
 from dask.distributed import Lock
 import gsw
+import importlib.resources
 import numpy as np
 import pandas as pd
 import pyarrow as pa
@@ -32,10 +34,17 @@ class Converter:
     # Constructors/Destructors                                           #
     # ------------------------------------------------------------------ #
 
-    def __init__(self, db=None, db_type=None, input_path=None, outdir_pq=None, outdir_schema=None, fname_pq=None, add_derived_vars=False, overwrite=True):
+    def __init__(self, config=None):
         """Constructor
 
         Arguments:
+
+        config -- configuration dictionary, it must contains at least db and
+                  db_type; other values as below; if any value is not specified,
+                  defaults in config.yaml are used; vice versa, if a values is
+                  specified, the corresponging entry in config.yaml is
+                  overwritten with the user-specified value
+
         db            -- database name to generate schema for
         db_type       -- type of database desired (PHY or BGC parameters)
         input_path    -- path to file(s) to be converted
@@ -44,7 +53,40 @@ class Converter:
         fname_pq      -- name of the parquet file to be generated
         add_derived_vars -- flag to add derived variables to the database
         overwrite     -- flag to overwrite existing parquet files
+
         """
+
+        if config is not None:
+            db = config['db']
+            db_type = config['db_type'].upper()
+
+            config_path = importlib.resources.files("crocolaketools.config").joinpath("config.yaml")
+            config_disk = yaml.safe_load(open(config_path))
+            config_disk = config_disk[db + "_" + db_type]
+
+            config_user_keys = list(config.keys())
+            config_disk_keys = list(config_disk.keys())
+
+            read_keys = [k for k in config_disk_keys if k not in config_user_keys]
+            if len(read_keys)>0:
+                for k in ["db","db_type"]:
+                    if not config[k] == config_disk[k]:
+                        warnings.warn(f"User-specified and config file are not matching at key {k} (got {config[k]} and {config_disk[k]}), the user-specified value {config[k]} is used")
+            for k in read_keys:
+                config[k] = config_disk[k]
+
+            print("Converter configuration:")
+            print(config)
+
+            input_path = config["input_path"]
+            outdir_pq = config["outdir_pq"]
+            outdir_schema = config["outdir_schema"]
+            fname_pq = config["fname_pq"]
+            add_derived_vars = config["add_derived_vars"]
+            overwrite = config["overwrite"]
+
+        else:
+            raise ValueError("No config argument provided.")
 
         if isinstance(db,str):
             if db in params.databases:
@@ -117,11 +159,13 @@ class Converter:
         """
 
         # adapt for single filename input
-        if isinstance(filenames,str):
+        if isinstance(filenames,str) or filenames is None:
             filenames = [filenames]
 
         lock = Lock()
-        if len(filenames) > 1:
+        if filenames is None:
+            warnings.warn("Filename(s) not provided, using default behavior.")
+        elif len(filenames) > 1:
             print("reading reference files")
             ddf = dd.from_map(self.read_to_df,filenames,lock=lock)
         else:

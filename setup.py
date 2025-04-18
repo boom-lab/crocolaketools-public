@@ -22,9 +22,15 @@ setup(
             'crocolaketools = scripts.main:main',
             'argo2argoqc_phy = scripts.argo2argoqc_phy:main',
             'argo2argoqc_bgc = scripts.argo2argoqc_bgc:main',
-            'glodap2parquet = scripts.glodap2parquet:glodap2parquet',
+            'glodap2parquet = scripts.glodap2parquet:main',
             'spray2parquet = scripts.spray2parquet:spray2parquet',
             'argogdac2parquet = scripts.argogdac2parquet:argogdac2parquet',
         ],
     },
+    include_packages_data=True,
+    package_data={
+        "crocolaketools": [
+            "config/config.yaml"
+        ]
+    }
 )
