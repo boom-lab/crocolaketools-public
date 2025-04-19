@@ -54,8 +54,17 @@ class ConverterSaildrones(Converter):
         if "time" in df.columns:
             df["time"] = pd.to_datetime(df["time"], errors="coerce").astype(ArrowDtype(pa.timestamp("ns")))
 
-        if "TEMP_SBE37_MEAN" not in df.columns and "TEMP_DEPTH_HALFMETER_MEAN" in df.columns:
-            df["TEMP_SBE37_MEAN"] = df["TEMP_DEPTH_HALFMETER_MEAN"]
+        # Handle missing values in temperature
+        if "TEMP_SBE37_MEAN" in df.columns:
+            temp_series = df["TEMP_SBE37_MEAN"].copy()
+        else:
+            temp_series = pd.Series([np.nan] * len(df), index=df.index)
+
+        # Fill missing values from the fallback column, if it exists
+        if "TEMP_DEPTH_HALFMETER_MEAN" in df.columns:
+            temp_series = temp_series.fillna(df["TEMP_DEPTH_HALFMETER_MEAN"])
+
+        df["TEMP_SBE37_MEAN"] = temp_series
 
         df = df.reindex(columns=params.params["Saildrones"])
         df = self.standardize_data(df)
@@ -95,8 +104,8 @@ if __name__ == "__main__":
     conv = ConverterSaildrones(
         db="Saildrones",
         db_type="BGC",
-        input_path="D:\GSoC\Temp\crocolaketools-public\datainput\\",
-        outdir_pq="D:\GSoC\Temp\crocolaketools-public\dataoutput\\",
+        input_path="",
+        outdir_pq="",
         add_derived_vars=True
     )
-    conv.convert("TPOS-2023_SD1030_1min.nc")
+    conv.convert(["TPOS-2024_SD1090_1min.nc"])
