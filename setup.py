@@ -24,7 +24,8 @@ setup(
             'argo2argoqc_bgc = scripts.argo2argoqc_bgc:main',
             'glodap2parquet = scripts.glodap2parquet:main',
             'spray2parquet = scripts.spray2parquet:main',
-            'argogdac2parquet = scripts.argogdac2parquet:main',
+            'argogdac2parquet = scripts.argogdac2parquet:argogdac2parquet',
+            'merge_crocolake = scripts.merge_crocolake:main',
         ],
     },
 )
