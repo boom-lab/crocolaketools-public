@@ -10,26 +10,34 @@
 ##########################################################################
 import argparse
 import os
-from pprint import pprint
 from warnings import simplefilter
 from datetime import datetime
+
+import argparse
 import glob
 import pandas as pd
 # ignore pandas "educational" performance warnings
 simplefilter(action="ignore", category=pd.errors.PerformanceWarning)
-from dask.distributed import Client
+from dask.distributed import Client, Lock
 from crocolaketools.converter.converterSprayGliders import ConverterSprayGliders
+
+import functools
+print = functools.partial(print, flush=True)
 ##########################################################################
 
 def spray2parquet(spray_path=None, outdir_pqt=None, fname_pq=None, use_config_file=None):
 
+    print('Spray_fpath:')
+    print(spray_fpath)
+
     # this set up works
     # it seems that more workers or threads raises memory issues
     client = Client(
-        threads_per_worker=2,
+        threads_per_worker=20,
         n_workers=1,
         memory_limit='110GB',
-        processes=True
+        processes=True,
+        dashboard_address=':1111',
     )
 
     if not use_config_file:
@@ -60,7 +68,53 @@ def spray2parquet(spray_path=None, outdir_pqt=None, fname_pq=None, use_config_fi
     for n in spray_names:
         spray_fpath.append(spray_path + n)
 
-    ConverterPHY.convert(spray_names)
+    return
+
+    print("Creating temporary files...")
+    ConverterPHY.prepare_data(
+        flist=spray_names,
+        lock=Lock()
+    )
+
+    print("Temporary files created.")
+
+    client.restart()
+
+    flist = glob.glob(os.path.join(tmp_nc_path, '*.nc'))
+    flist = [os.path.basename(f) for f in flist]
+    print('Temporary files:')
+    print(flist)
+
+    print("Converting temporary files to parquet...")
+
+    ConverterPHY.convert(
+        filenames=flist,
+    )
+
+    print("Temporary files converted to parquet.")
+
+    print("PHY files converted to parquet.")
+    print("Working on BGC files...")
+    # client.restart()
+    print('Temporary files:')
+    print(flist)
+
+    ConverterBGC = ConverterSprayGliders(
+        db = "SprayGliders",
+        db_type="BGC",
+        input_path = spray_path,
+        outdir_pq = outdir_pqt_bgc,
+        outdir_schema = './schemas/SprayGliders/',
+        fname_pq = fname_pq_bgc,
+        add_derived_vars = True,
+        tmp_path = tmp_nc_path
+    )
+
+    print("Converting temporary files to parquet...")
+    ConverterBGC.convert(
+        filenames=flist
+    )
+    print("BGC files converted to parquet.")
 
     client.shutdown()
 

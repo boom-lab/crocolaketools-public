@@ -19,6 +19,7 @@ import numpy as np
 import pandas as pd
 import pyarrow as pa
 import pyarrow.parquet as pq
+import shutil
 import xarray as xr
 from crocolakeloader import params
 ##########################################################################
@@ -53,7 +54,7 @@ class Converter:
         fname_pq      -- name of the parquet file to be generated
         add_derived_vars -- flag to add derived variables to the database
         overwrite     -- flag to overwrite existing parquet files
-
+        tmp_path      -- path to temporary directory to store intermediate files
         """
 
         if config is not None:
@@ -84,6 +85,7 @@ class Converter:
             fname_pq = config["fname_pq"]
             add_derived_vars = config["add_derived_vars"]
             overwrite = config["overwrite"]
+            tmp_path = config["tmp_path"]
 
         else:
             raise ValueError("No config argument provided.")
@@ -110,6 +112,8 @@ class Converter:
 
         if input_path is None:
             raise ValueError("No input file path provided.")
+        if input_path[-1] != "/":
+            input_path = input_path + "/"
         self.input_path = input_path
         print("Original files read from " + self.input_path)
 
@@ -144,11 +148,60 @@ class Converter:
         if self.add_derived_vars:
             print("Derived variables will be added.")
 
+        # Generate temporary folder variable
+        if tmp_path is None:
+            self.tmp_path = "./tmp/"
+        else:
+            if tmp_path[-1] != "/":
+                tmp_path = tmp_path + "/"
+            self.tmp_path = tmp_path
+
+        print("Temporary files will be stored at " + self.tmp_path)
+
         self.overwrite = overwrite
+
+        self.tmp_paths_to_remove = None
+
+        self.generate_dtypes_maps()
+
+        # This should be false unless you're using from_delayed to generate the
+        # dask dataframe
+        self.call_guess_schema = False
 
     # ------------------------------------------------------------------ #
     # Methods                                                            #
     # ------------------------------------------------------------------ #
+
+#------------------------------------------------------------------------------#
+## Generate maps
+    def generate_dtypes_maps(self):
+        """Generate dictionaries containing maps to convert names of pyarrow
+        dtypes between pandas and pyarrow backends"""
+
+        self.pa2pd_dtype_map = {
+            pa.int8(): "int8[pyarrow]",
+            pa.int16(): "int16[pyarrow]",
+            pa.int32(): "int32[pyarrow]",
+            pa.int64(): "int64[pyarrow]",
+            pa.uint8(): "uint8[pyarrow]",
+            pa.uint16(): "uint16[pyarrow]",
+            pa.uint32(): "uint32[pyarrow]",
+            pa.uint64(): "uint64[pyarrow]",
+            pa.bool_(): "bool[pyarrow]",
+            pa.float32(): "float32[pyarrow]",
+            pa.float64(): "float64[pyarrow]",
+            pa.string(): "string[pyarrow]",
+            pa.timestamp("ns"): pd.ArrowDtype(pa.timestamp("ns")),
+        }
+
+        # multiple names map to the same dtype in pandas, and they might not be
+        # the same used when going from pyarrow to pandas
+        self.pd2pa_dtype_map = {v: k for k, v in self.pa2pd_dtype_map.items()}
+        self.pd2pa_dtype_map["timestamp[ns][pyarrow]"] = pa.timestamp("ns")
+        self.pd2pa_dtype_map["float[pyarrow]"] = pa.float32()
+        self.pd2pa_dtype_map["double[pyarrow]"] = pa.float64()
+        self.pd2pa_dtype_map[pd.StringDtype("pyarrow")] = pa.string()
+
 
 #------------------------------------------------------------------------------#
 ## Convert file
@@ -167,7 +220,10 @@ class Converter:
             warnings.warn("Filename(s) not provided, using default behavior.")
         elif len(filenames) > 1:
             print("reading reference files")
-            ddf = dd.from_map(self.read_to_df,filenames,lock=lock)
+            ddf = self.read_to_ddf(
+                flist=filenames,
+                lock=lock
+            )
         else:
             df = self.read_to_df(filenames[0],lock)
             if isinstance(df,pd.DataFrame):
@@ -179,6 +235,8 @@ class Converter:
             print("adding derived variables")
             ddf = self.add_derived_variables(ddf)
 
+        ddf = self.reorder_columns(ddf)
+
         print("repartitioning dask dataframe")
         ddf = ddf.repartition(partition_size="300MB")
 
@@ -188,17 +246,73 @@ class Converter:
         return
 
 #------------------------------------------------------------------------------#
+## Re-order columns
+    def reorder_columns(self,ddf):
+        """Re-order columns to have PLATFORM_NUMBER, LATITUDE, LONGITUDE, JULD,
+        DB_NAME first
+
+        Argument:
+        ddf -- dask dataframe to re-order
+        """
+
+        cols = ddf.columns.to_list()
+        first_cols = [
+            "DB_NAME",
+            "JULD",
+            "LATITUDE",
+            "LONGITUDE",
+            "PLATFORM_NUMBER"
+        ]
+        for col in first_cols:
+            cols.remove(col)
+        cols = first_cols + cols
+        ddf = ddf[cols]
+
+        return ddf
+
+#------------------------------------------------------------------------------#
 ## Read file to convert into a pandas dataframe
     def read_to_df(self, filename=None, lock=None):
+
         """currently implemented on db by db basis"""
         return NotImplementedError
 
 #------------------------------------------------------------------------------#
 ## Store file to parquet version
+    def guess_schema(self,ddf):
+        """Guess schema from dask dataframe. It seems that dataframes build from
+        delayed objects do not trigger computations the same ways as those build
+        from from_map, and they do not know the schema that is generated during
+        standardizing. The dataframe though has the right dtypes and names, so
+        we generate it here.
+        This is a workaround that should be made more robust in the future.
+
+        Argument:
+        ddf -- dask dataframe to get schema from
+
+        Returns:
+        schema -- pyarrow schema of the dask dataframe
+        """
+
+        ddf_dtypes = ddf.dtypes
+        ddf_schema = []
+        for key in ddf_dtypes.keys():
+            f = pa.field(
+                key, self.pd2pa_dtype_map[ddf_dtypes[key]]
+            )
+            ddf_schema.append(f)
+        ddf_schema = pa.schema(ddf_schema)
+
+        return ddf_schema
+
+#------------------------------------------------------------------------------#
+## Store file to parquet version
     def to_parquet(self,df):
 
-        # if self.fname_pq[-8:] == ".parquet":
-        #     self.fname_pq = self.fname_pq[:-8]
+        if self.call_guess_schema:
+            schema_pq = self.guess_schema(df)
+        else:
+            schema_pq = self.schema_pq
 
         name_function = lambda x: f"{self.fname_pq}_{x:03d}.parquet"
 
@@ -223,7 +337,7 @@ class Converter:
             overwrite=overwrite,
             write_metadata_file = True,
             write_index=False,
-            schema=self.schema_pq
+            schema=schema_pq
         )
 
 #------------------------------------------------------------------------------#
@@ -326,7 +440,7 @@ class Converter:
         """
 
         if self.db_type != "PHY":
-            raise ValueError("Database type can only PHY to trim schema.")
+            raise ValueError("Database type can only be PHY to trim schema.")
 
         db_phy_name = self.db + self.db_type
         param = params.params[db_phy_name].copy()
@@ -370,6 +484,7 @@ class Converter:
             data = data.rename(rename_map)
             data_vars = data.data_vars.keys()
 
+        # drop columns that are not of interest for CrocoLake
         todrop = [c for c in data_vars if c not in params.params["CROCOLAKE_" + self.db_type + "_QC"]]
 
         if isinstance(data,(pd.DataFrame,dd.DataFrame)):
@@ -379,6 +494,19 @@ class Converter:
             data = data.to_dataframe()
             data = data.reset_index()
         # data is always a pandas dataframe now
+
+        # add <NA> for columns in params.params["CROCOLAKE_" + self.db_type +
+        # "_QC"] but not in data; this is needed when different files for the
+        # same original database do not have the same variables (e.g. some Spray
+        # Gliders do not have doxy and others do)
+        toadd = [
+            c for c in params.params["CROCOLAKE_" + self.db_type + "_QC"]
+            if (c not in data.columns
+                and c in list(params.params[self.db + "2CROCOLAKE"].values())
+                and not any(item in c for item in ["QC", "ERROR", "DB_NAME"]))
+        ]
+        for col in toadd:
+            data[col] = pd.NA
 
         # add <NA> for missing error and QC columns
         for col in data.columns:
@@ -408,26 +536,10 @@ class Converter:
         pd_dict -- schema for pandas dataframe
         """
 
-        dtype_mapping = {
-            pa.int8(): "int8[pyarrow]",
-            pa.int16(): "int16[pyarrow]",
-            pa.int32(): "int32[pyarrow]",
-            pa.int64(): "int64[pyarrow]",
-            pa.uint8(): "uint8[pyarrow]",
-            pa.uint16(): "uint16[pyarrow]",
-            pa.uint32(): "uint32[pyarrow]",
-            pa.uint64(): "uint64[pyarrow]",
-            pa.bool_(): "bool[pyarrow]",
-            pa.float32(): "float32[pyarrow]",
-            pa.float64(): "float64[pyarrow]",
-            pa.string(): "string[pyarrow]",
-            pa.timestamp("ns"): pd.ArrowDtype(pa.timestamp("ns")),
-        }
-
         pd_types = []
         for d in schema_pq.types:
             try:
-                pd_type = dtype_mapping[d]
+                pd_type = self.pa2pd_dtype_map[d]
             except KeyError:
                 pd_type = d.to_pandas_dtype()
             pd_types.append( pd_type )

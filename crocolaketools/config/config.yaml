@@ -12,6 +12,7 @@ ARGO_PHY:
   fname_pq: PHY_ARGO-QC
   add_derived_vars: True
   overwrite: False
+  tmp_path:
 
 ARGO_BGC:
   db: ARGO
@@ -22,6 +23,7 @@ ARGO_BGC:
   fname_pq: BGC_ARGO-QC
   add_derived_vars: True
   overwrite: False
+  tmp_path:
 
 # GLODAP config
 GLODAP_PHY:
@@ -33,6 +35,7 @@ GLODAP_PHY:
   fname_pq: 1101_PHY_GLODAP
   add_derived_vars: False
   overwrite: False
+  tmp_path:
 
 GLODAP_BGC:
   db: GLODAP
@@ -43,6 +46,7 @@ GLODAP_BGC:
   fname_pq: 1101_BGC_GLODAP
   add_derived_vars: True
   overwrite: False
+  tmp_path:
 
 # Spray Gliders
 SprayGliders_PHY:
@@ -54,6 +58,7 @@ SprayGliders_PHY:
   fname_pq: 1201_PHY_SPRAY
   add_derived_vars: True
   overwrite: False
+  tmp_path:
 
 SprayGliders_BGC:
   db: SprayGliders
@@ -64,3 +69,4 @@ SprayGliders_BGC:
   fname_pq: 1201_BGC_SPRAY
   add_derived_vars: True
   overwrite: False
+  tmp_path:

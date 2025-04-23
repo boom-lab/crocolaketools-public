@@ -18,7 +18,10 @@ terminal_width = shutil.get_terminal_size().columns
 import dask.dataframe as dd
 from dask.distributed import Client
 import pandas as pd
+import pyarrow as pa
+import pyarrow.parquet as pq
 import pytest
+import xarray as xr
 
 from crocolaketools.converter.converterSprayGliders import ConverterSprayGliders
 from crocolaketools.converter.converterArgoQC import ConverterArgoQC
@@ -884,6 +887,109 @@ class TestConverter:
         converterSG.convert(["NASCar.nc", "Hawaii.nc"])
 
         client.shutdown()
+
+    def test_converter_spraygliders_prepare_tmp(self):
+        """Test that SprayGliders conversion executes; this test does not use
+        convert() but its internal steps to check the dataframe is never empty
+        """
+        client = Client(
+            threads_per_worker=2,
+            n_workers=1,
+            memory_limit='100GB',
+            dashboard_address=':8787',
+        )
+
+        spray_path = "/vortexfs1/share/boom/users/enrico.milanese/originalDatabases/SprayGliders/"
+        outdir_spray_pqt = "./tmp_pqt/" # this should not be used in this test actually
+        tmp_nc_path = "./tmp_nc_chunks/"
+
+        if os.path.isdir(tmp_nc_path):
+            raise ValueError("tmp_nc_path already exists, please remove it before running the test.")
+
+        spray_files = glob.glob(os.path.join(spray_path, '*.nc'))
+        spray_names = [os.path.basename(f) for f in spray_files]
+        print("spray_names:")
+        print(spray_names)
+
+        converterSG = ConverterSprayGliders(
+            db = "SprayGliders",
+            db_type="PHY",
+            input_path = spray_path,
+            outdir_pq = outdir_spray_pqt,
+            outdir_schema = './schemas/SprayGliders/',
+            fname_pq = 'test_1200_PHY_SPRAY-DEV',
+            tmp_path = tmp_nc_path
+        )
+
+        from dask.distributed import Lock
+        lock=Lock()
+
+        # select three random files to test
+        flist = random.sample(spray_names, k=3)
+        print(f"Testing with {len(flist)} of {len(spray_names)} files")
+        print("flist:")
+        print(flist)
+
+        converterSG.prepare_data(flist=flist,lock=lock)
+
+        not_empty_dir = bool(os.listdir(tmp_nc_path))
+        assert not_empty_dir == True
+
+        for file in glob.glob(tmp_nc_path+"/*.nc"):
+            try:
+                ds = xr.open_dataset(file, engine="h5netcdf", chunks=None, cache=True)
+            except Exception as e:
+                assert False, f"Failed to open file {file}: {e}"
+        assert True
+
+        client.shutdown()
+
+    def test_converter_spraygliders_read_to_ddf_phy(self):
+        """Test that SprayGliders conversion executes; this test does not use
+        convert() but its internal steps to check the dataframe is never empty
+        """
+        client = Client(
+            threads_per_worker=20,
+            n_workers=1,
+            memory_limit='100GB',
+            dashboard_address=':1419',
+        )
+        print("Dashboard address:")
+        print(client.dashboard_link)
+
+        spray_path = "/vortexfs1/share/boom/users/enrico.milanese/crocolaketools-public-fork/crocolaketools/test/tmp_nc_chunks/"
+        outdir_spray_pqt = "./tmp_pqt/" # this should not be used in this test actually
+        tmp_nc_path = "./tmp_nc_chunks/"
+
+        spray_files = glob.glob(os.path.join(spray_path, '*.nc'))
+        spray_names = [os.path.basename(f) for f in spray_files]
+        print("spray_names:")
+        print(spray_names)
+
+        converterSG = ConverterSprayGliders(
+            db = "SprayGliders",
+            db_type="PHY",
+            input_path = spray_path,
+            outdir_pq = outdir_spray_pqt,
+            outdir_schema = './schemas/SprayGliders/',
+            fname_pq = 'test_1200_PHY_SPRAY-DEV'
+        )
+
+        from dask.distributed import Lock
+        lock=Lock()
+
+        flist = spray_names
+        print(f"Testing with {len(flist)} of {len(spray_names)} files")
+        print("flist:")
+        print(flist)
+
+        converterSG.convert(
+            filenames=flist
+        )
+
+        client.shutdown()
+
+        return
 
     def test_converter_cpr_read_to_df(self):
         """
