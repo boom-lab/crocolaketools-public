@@ -25,6 +25,7 @@ setup(
             'glodap2parquet = scripts.glodap2parquet:main',
             'spray2parquet = scripts.spray2parquet:spray2parquet',
             'argogdac2parquet = scripts.argogdac2parquet:argogdac2parquet',
+            'download_argo_gdac = scripts.download_argo_gdac:main',
         ],
     },
     include_packages_data=True,

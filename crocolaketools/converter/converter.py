@@ -210,7 +210,7 @@ class Converter:
 
         append = False
         overwrite = True
-        if not bool(os.listdir(self.outdir_pq)) and not self.overwrite:
+        if (not bool(os.listdir(self.outdir_pq))) and (not self.overwrite):
             print("Folder exists and contains files. Trying to append to existing parquet files..")
             append = True
             overwrite = False

@@ -65,7 +65,7 @@ class DownloaderArgoGDAC(Downloader):
                 overwrite_profiles=True,
                 NPROC=nproc,
                 verbose=True,
-                checktime=True
+                checktime=dryrun_flag
             )
 
             if db_name=="phy":

@@ -3,8 +3,10 @@ __pycache__/
 *.py[cod]
 *$py.class
 
-# virtual env
+# virtual env and local data
 venv/
+scripts/data/
+scripts/schemas/
 
 # C extensions
 *.so

@@ -25,10 +25,10 @@ def glodap2parquet(glodap_path=None, glodap_name=None, outdir_pqt_phy=None, outd
         config = {
             'db': 'GLODAP',
             'db_type': 'PHY',
-            'input_path': '/home/enrico/myWHOI/databases/GLODAP/v2.2023',
-            'outdir_pq': '/home/enrico/myWHOI/databases/GLODAP/v2.2023/parquet/',
-            'outdir_schema': './schema/',
-            'fname_pq': 'GLODAPv2.2023_Merged_Master_File',
+            'input_path': glodap_path,
+            'outdir_pq': outdir_pqt_phy,
+            'outdir_schema': './schemas/GLODAP/',
+            'fname_pq': fname_pq,
             'add_derived_vars': True,
             'overwrite': False,
         }
@@ -47,10 +47,10 @@ def glodap2parquet(glodap_path=None, glodap_name=None, outdir_pqt_phy=None, outd
         config = {
             'db': 'GLODAP',
             'db_type': 'BGC',
-            'input_path': '/home/enrico/myWHOI/databases/GLODAP/v2.2023',
-            'outdir_pq': '/home/enrico/myWHOI/databases/GLODAP/v2.2023/parquet/bgc/',
-            'outdir_schema': './schema/',
-            'fname_pq': 'GLODAPv2.2023_Merged_Master_File',
+            'input_path': glodap_path,
+            'outdir_pq': outdir_pqt_bgc,
+            'outdir_schema': './schemas/GLODAP/',
+            'fname_pq': fname_pq,
             'add_derived_vars': True,
             'overwrite': False,
         }

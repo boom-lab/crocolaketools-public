@@ -18,7 +18,7 @@ simplefilter(action="ignore", category=pd.errors.PerformanceWarning)
 from crocolaketools.converter.converterArgoQC import ConverterArgoQC
 ##########################################################################
 
-def argo2argoqc_bgc(argo_bgc_path,outdir_bgc_pqt,fname_pq):
+def argo2argoqc_bgc(argo_bgc_path,outdir_bgc_pqt,fname_pq,use_config_file):
     """Subset ARGO to QC-ed only data"""
 
     # this set up works
@@ -34,15 +34,28 @@ def argo2argoqc_bgc(argo_bgc_path,outdir_bgc_pqt,fname_pq):
     print("Client dashboard address: ", client.dashboard_link)
     print(client.scheduler.address)
 
-    ConverterBGC = ConverterArgoQC(
-        db = "ARGO",
-        db_type="BGC",
-        input_path = argo_bgc_path,
-        outdir_pq = outdir_bgc_pqt,
-        outdir_schema = './schemas/ArgoQC/',
-        fname_pq = fname_pq,
-        add_derived_vars=True
-    )
+    if not use_config_file:
+        if argo_path is None:
+            raise ValueError("Path to ARGO data is required")
+        if outdir_pqt is None:
+            raise ValueError("Output path is required")
+
+        print("Using user-defined configuration")
+        config = {
+            'db': 'ARGO',
+            'db_type': 'BGC',
+            'input_path': argo_path,
+            'outdir_pq': outdir_pqt,
+            'outdir_schema': './schemas/ARGO/',
+            'fname_pq': fname_pq,
+            'add_derived_vars': True,
+            'overwrite': False,
+        }
+        ConverterBGC = ConverterArgoQC(config)
+
+    else: # reads from file
+        print("Using configuration from config.yaml")
+        ConverterBGC = ConverterArgoQC(db_type='bgc')
 
     ConverterBGC.convert()
 
@@ -51,13 +64,14 @@ def argo2argoqc_bgc(argo_bgc_path,outdir_bgc_pqt,fname_pq):
 #------------------------------------------------------------------------------#
 def main():
     parser = argparse.ArgumentParser(description='Script to convert ARGO BGC database to QC-ed only data')
-    parser.add_argument('-i', help="Path to bgc Argo parquet database", required=True)
-    parser.add_argument('-o', help="Destination path for best-quality bgc Argo parquet database", required=True)
+    parser.add_argument('-i', help="Path to bgc Argo parquet database", required=False)
+    parser.add_argument('-o', help="Destination path for best-quality bgc Argo parquet database", required=False)
     parser.add_argument('-f', help="Basename for output files", required=False, default="1002_BGC_ARGO-QC-DEV")
+    parser.add_argument('--config', action='store_true', help="Use config files instead of parsing arguments", required=False, default=None)
 
     args = parser.parse_args()
 
-    argo2argoqc_bgc(args.i,args.o,args.f)
+    argo2argoqc_bgc(args.i,args.o,args.f,args.config)
 
 ##########################################################################
 
