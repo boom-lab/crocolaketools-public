@@ -86,7 +86,6 @@ def main():
     glodap2parquet(args.i, args.n, args.phy, args.bgc, args.b, args.config)
 
 ##########################################################################
-
 if __name__ == "__main__":
     print(datetime.now())
     print()

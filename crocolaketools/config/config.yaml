@@ -2,12 +2,25 @@
 # config is read only by converters or downloaders (not by script)
 # every converter needs a config file, no rogue arguments anymore
 
+# CROCOLAKE
+CROCOLAKE_PHY:
+  db: CROCOLAKE
+  db_type: PHY
+  input_path: /home/enrico/myWHOI/CrocoLake/ctp-fork/scripts/data/parquet/PHY_CROCOLAKE_MERGED/2025-04-23/
+  outdir_pq: /home/enrico/myWHOI/CrocoLake/ctp-fork/scripts/data/parquet/PHY_CROCOLAKE_MERGED/2025-04-23/
+  outdir_schema: ./schema/
+  fname_pq: PHY_CROCOLAKE_MERGED
+  add_derived_vars: True
+  overwrite: False
+  tmp_path:
+  ln_path: /home/enrico/myWHOI/CrocoLake/ctp-fork/scripts/data/parquet/PHY_CROCOLAKE_LN/
+
 # Argo QC
 ARGO_PHY:
   db: ARGO
   db_type: PHY
   input_path: /home/enrico/myWHOI/CrocoLake/ctp-fork/scripts/data/parquet/PHY_ARGO-GDAC/2025-04-23/
-  outdir_pq: /home/enrico/myWHOI/CrocoLake/ctp-fork/scripts/data/parquet/PHY_ARGO-QC/2025-04-23/
+  outdir_pq: /home/enrico/myWHOI/CrocoLake/ctp-fork/scripts/data/parquet/PHY_ARGO-QC/2025-04-24/
   outdir_schema: ./schema/
   fname_pq: PHY_ARGO-QC
   add_derived_vars: True

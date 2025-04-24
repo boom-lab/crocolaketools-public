@@ -9,8 +9,10 @@
 
 ##########################################################################
 import argparse
+import importlib.resources
 import logging
 import os
+import yaml
 from datetime import datetime
 
 from crocolakeloader.loader import Loader
@@ -79,10 +81,6 @@ def merge_crocolake(db_type,croco_path,outdir,croco_name):
     name_function = lambda x: f"{croco_name}_{x:04d}.parquet"
     os.makedirs(outdir, exist_ok=True)
 
-    # print("merged ddf.head()")
-    # ddfhead = ddf.head()
-    # print(ddfhead)
-
     print("writing parquet")
     ddf.to_parquet(
         outdir,
@@ -101,11 +99,27 @@ def merge_crocolake(db_type,croco_path,outdir,croco_name):
 def main():
     parser = argparse.ArgumentParser(description='Script to merge CrocoLake into one parquet database')
     parser.add_argument('-d', help="CrocoLake type (PHY or BGC)", required=True)
-    parser.add_argument('-i', help="Path to CrocoLake", required=True)
-    parser.add_argument('-o', help="Destination for merged CrocoLake", required=True)
-    parser.add_argument('-f', help="Basename for output files", required=False, default="1002_BGC_ARGO-QC-DEV")
+    parser.add_argument('-i', help="Path to CrocoLake", required=False)
+    parser.add_argument('-o', help="Destination for merged CrocoLake", required=False)
+    parser.add_argument('-f', help="Basename for output files", required=False, default="merge_crocolake_out")
+    parser.add_argument('--config', action='store_true', help="Use config files instead of parsing arguments", required=False, default=None)
 
     args = parser.parse_args()
+
+    if not (args.d.upper() == "PHY" or args.d.upper() == "BGC"):
+        raise ValueError("CrocoLake type must be PHY or BGC.")
+
+    if args.config:
+        config_path = importlib.resources.files("crocolaketools.config").joinpath("config.yaml")
+        config = yaml.safe_load(open(config_path))
+        if args.d.upper() == "PHY":
+            args.i = config["CROCOLAKE_PHY"]["ln_path"]
+            args.o = config["CROCOLAKE_PHY"]["outdir_pq"]
+            args.f = config["CROCOLAKE_PHY"]["fname_pq"]
+        elif args.d.upper() == "BGC":
+            args.i = config["CROCOLAKE_BGC"]["ln_path"]
+            args.o = config["CROCOLAKE_BGC"]["outdir_pq"]
+            args.f = config["CROCOLAKE_BGC"]["fname_pq"]
 
     # Configure logging
     configure_logging(args.f+".log")
@@ -114,9 +128,6 @@ def main():
     logging.info("Path to CrocoLake:            %s", args.i)
     logging.info("Merged CrocoLake output path: %s", args.o)
     logging.info("Basename for output files:    %s", args.f)
-
-    if not (args.d.upper() == "PHY" or args.d.upper() == "BGC"):
-        raise ValueError("CrocoLake type must be PHY or BGC.")
 
     merge_crocolake(args.d.upper(),args.i,args.o,args.f)
 

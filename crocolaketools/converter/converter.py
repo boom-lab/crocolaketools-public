@@ -324,10 +324,13 @@ class Converter:
 
         append = False
         overwrite = True
-        if (not bool(os.listdir(self.outdir_pq))) and (not self.overwrite):
-            print("Folder exists and contains files. Trying to append to existing parquet files..")
-            append = True
-            overwrite = False
+        if len(os.listdir(self.outdir_pq))>0:
+            if not self.overwrite:
+                print("Folder exists and contains files. Trying to append to existing parquet files..")
+                append = True
+                overwrite = False
+            else:
+                raise ValueError("Folder exists and contains files. Overwrite is set to False, but no append is possible. Please remove the folder or set overwrite to True.")
 
         df.to_parquet(
             self.outdir_pq,
