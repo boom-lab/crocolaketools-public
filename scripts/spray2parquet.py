@@ -27,9 +27,6 @@ print = functools.partial(print, flush=True)
 
 def spray2parquet(spray_path=None, outdir_pqt=None, fname_pq=None, use_config_file=None):
 
-    print('Spray_fpath:')
-    print(spray_fpath)
-
     # this set up works
     # it seems that more workers or threads raises memory issues
     client = Client(
@@ -51,6 +48,7 @@ def spray2parquet(spray_path=None, outdir_pqt=None, fname_pq=None, use_config_fi
             'fname_pq': fname_pq,
             'add_derived_vars': True,
             'overwrite': False,
+            'tmp_path': './tmp_spray/',
         }
         ConverterPHY = ConverterSprayGliders(config)
 
@@ -58,63 +56,72 @@ def spray2parquet(spray_path=None, outdir_pqt=None, fname_pq=None, use_config_fi
         print("Using configuration from config.yaml")
         ConverterPHY = ConverterSprayGliders(db_type='phy')
 
-    spray_files = glob.glob(os.path.join(ConverterPHY.input_path, '*.nc'))
-    spray_names = [os.path.basename(f) for f in spray_files]
-
-    print('Spray files:')
-    pprint(spray_names)
-
-    spray_fpath = []
-    for n in spray_names:
-        spray_fpath.append(spray_path + n)
-
-    return
-
     print("Creating temporary files...")
     ConverterPHY.prepare_data(
-        flist=spray_names,
         lock=Lock()
     )
 
     print("Temporary files created.")
 
+    # Restarting the server forces dask to free the memory
     client.restart()
-
-    flist = glob.glob(os.path.join(tmp_nc_path, '*.nc'))
-    flist = [os.path.basename(f) for f in flist]
-    print('Temporary files:')
-    print(flist)
 
     print("Converting temporary files to parquet...")
 
     ConverterPHY.convert(
-        filenames=flist,
+        filepath=ConverterPHY.tmp_path,
     )
 
     print("Temporary files converted to parquet.")
-
     print("PHY files converted to parquet.")
-    print("Working on BGC files...")
-    # client.restart()
-    print('Temporary files:')
-    print(flist)
+    print("Remoiving temporary files...")
+    ConverterPHY.cleanup()
+    del ConverterPHY
+    print("done.")
 
-    ConverterBGC = ConverterSprayGliders(
-        db = "SprayGliders",
-        db_type="BGC",
-        input_path = spray_path,
-        outdir_pq = outdir_pqt_bgc,
-        outdir_schema = './schemas/SprayGliders/',
-        fname_pq = fname_pq_bgc,
-        add_derived_vars = True,
-        tmp_path = tmp_nc_path
+    print("Working on BGC files...")
+
+    # Restarting the server forces dask to free the memory
+    client.restart()
+
+    if not use_config_file:
+        print("Using user-defined configuration")
+        config = {
+            'db': 'GLODAP',
+            'db_type': 'BGC',
+            'input_path': spray_path,
+            'outdir_pq': outdir_pqt,
+            'outdir_schema': './schemas/SprayGliders/',
+            'fname_pq': fname_pq,
+            'add_derived_vars': True,
+            'overwrite': False,
+            'tmp_path': './tmp_spray/',
+        }
+        ConverterBGC = ConverterSprayGliders(config)
+
+    else: # reads from file
+        print("Using configuration from config.yaml")
+        ConverterBGC = ConverterSprayGliders(db_type='bgc')
+
+
+    # The following step is not needed if you already created all the temporary
+    # files earlier with ConverterPHY and you did not call the cleanup()
+    # function
+    print("Creating temporary files...")
+    ConverterBGC.prepare_data(
+        lock=Lock()
     )
+
+    print("Temporary files created.")
 
     print("Converting temporary files to parquet...")
     ConverterBGC.convert(
-        filenames=flist
+        filepath=ConverterBGC.tmp_path,
     )
     print("BGC files converted to parquet.")
+    print("Removing temporary files...")
+    ConverterBGC.cleanup()
+    print("done.")
 
     client.shutdown()
 
@@ -123,8 +130,8 @@ def spray2parquet(spray_path=None, outdir_pqt=None, fname_pq=None, use_config_fi
 #------------------------------------------------------------------------------#
 def main():
     parser = argparse.ArgumentParser(description='Script to convert Spray Gliders database to parquet')
-    parser.add_argument('-i', help="Path to Spray Gliders data", required=True)
-    parser.add_argument('-o', help="Destination path for parquet format database", required=True)
+    parser.add_argument('-i', help="Path to Spray Gliders data", required=False)
+    parser.add_argument('-o', help="Destination path for parquet format database", required=False)
     parser.add_argument("-f", help="Basename for output files", required=False, default="1200_PHY_SPRAY-DEV.parquet")
     parser.add_argument('--config', action='store_true', help="Use config files instead of parsing arguments", required=False, default=None)
 

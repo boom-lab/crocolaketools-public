@@ -14,3 +14,4 @@ gsw==3.6.19
 bokeh==3.4.3
 pytest
 argopy
+h5netcdf

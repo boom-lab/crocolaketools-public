@@ -205,20 +205,28 @@ class Converter:
 
 #------------------------------------------------------------------------------#
 ## Convert file
-    def convert(self, filenames=None):
+    def convert(self, filenames=None, filepath=None):
         """Convert filename to parquet. This executes all the steps needed from
         reading to converting to storing, and might not work for non-simple
         workflows. You can still refer to it to build your own workflow.
         """
 
+        if filenames is None:
+            if filepath is None:
+                guess_path = self.input_path
+                warnings.warn("Filename(s) not provided, guessing from input path: " + guess_path)
+            else:
+                guess_path = filepath
+                warnings.warn("Filename(s) not provided, guessing from provided file path: " + guess_path)
+            filenames = os.listdir(guess_path)
+        print("List of files to convert: ", filenames)
+
         # adapt for single filename input
-        if isinstance(filenames,str) or filenames is None:
+        if isinstance(filenames,str):
             filenames = [filenames]
 
         lock = Lock()
-        if filenames is None:
-            warnings.warn("Filename(s) not provided, using default behavior.")
-        elif len(filenames) > 1:
+        if len(filenames) > 1:
             print("reading reference files")
             ddf = self.read_to_ddf(
                 flist=filenames,

@@ -8,6 +8,7 @@
 ## @date Tue 04 Feb 2025
 
 ##########################################################################
+import glob
 import os
 import warnings
 import dask
@@ -71,10 +72,14 @@ class ConverterSprayGliders(Converter):
         if lock is None:
             warnings.warn("No lock provided. This might lead to concurrency or segmentation fault errors.")
 
+        if flist is None:
+            flist = os.listdir(self.input_path)
+            print("List of files not provided, guessing from input path: ", self.input_path)
+
+        print("List of files to process: ", flist)
         for fname in flist:
             if not fname.endswith(".nc"):
                 raise ValueError(f"{fname} does not end with '.nc'.")
-
             self.prepare_nc(fname, lock)
 
         return
@@ -299,6 +304,20 @@ class ConverterSprayGliders(Converter):
         df = df[sorted(df.columns.tolist())]
 
         return df
+
+#------------------------------------------------------------------------------#
+## Clean up temporary files
+    def cleanup(self):
+        """Remove all content in temporary folders"""
+
+        if self.tmp_path is not None:
+            warnings.warn(f"The temporary folder {self.tmp_path} is being deleted.")
+            tmp_to_remove = glob.glob(self.tmp_path+"*")
+            print("removing files:")
+            print(tmp_to_remove)
+            for f in tmp_to_remove:
+                os.remove(f)
+            os.removedirs(self.tmp_path)
 
 
 ##########################################################################
