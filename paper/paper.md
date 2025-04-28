@@ -105,6 +105,13 @@ Figures can be included like this:
 ![Workflow.\label{fig:workflow}](rect234.png)
 and referenced from text using \autoref{fig:example}.
 
+I am also trying this, maybe it works better with Fig \autoref{fig:example}.
+\begin{figure}[h!]
+    \centering
+    \includegraphics[width=\textwidth]{rect234.png}
+    \caption{Workflow.\label{fig:workflow2}}
+\end{figure}
+
 <!-- { width=20% } -->
 
 ## Documentation
