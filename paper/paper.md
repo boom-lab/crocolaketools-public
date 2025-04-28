@@ -101,18 +101,13 @@ The `examples` folder contains examples for how to access parquet datasets with 
 
 # Figures
 
-Figures can be included like this:
-![Workflow.\label{fig:workflow}](rect234.png)
-and referenced from text using \autoref{fig:example}.
-
-I am also trying this, maybe it works better with Fig \autoref{fig:example}.
+I am also trying this, maybe it works better with Fig \autoref{fig:workflow}.
 \begin{figure}[h!]
     \centering
     \includegraphics[width=\textwidth]{rect234.png}
-    \caption{Workflow.\label{fig:workflow2}}
+    \caption{Workflow.\label{fig:workflow}}
 \end{figure}
 
-<!-- { width=20% } -->
 
 ## Documentation
 Documentation is available at [TD add link]. It describes the CrocoLake dataset, thesub-datasets that it is made, and how they are obtained. It provides references to the original files origins for download before converting them.
