@@ -88,6 +88,9 @@ Modules to download the original data are optional. They should inherit from the
 
 ### Storage (converted)
 The core of `CrocoLakeTools` are the modules in the `Converter` class and its subclasses. Each project has its own subclass called `converter<ProjectName>`, e.g. `converterGLODAP`; further specifiers can be added as necessary (e.g. at this time there a few different converters for Argo data to prepare different datasets). The need for a dedicated converter for each project despite the usage of common data formats (e.g. netCDF, CSV) is due to differences in the schema, e.g. variable names, units, etc., while the steps that can be generalized for each format are usually already included in other libraries that `CrocoLakeTools` rely on (e.g. `pandas`, `dask`, `pyarrow`).
+Depending on the dataset, multiple converters can be applied. For example, to create CrocoLake, Argo data goes through two converters:
+1. `converterArgoGDAC`, which converts the original Argo GDAC preserving most of its original conventions;
+2. `converterArgoQC`, which takes the output of the previous step and applies some filtering based on Argo's QC flags and makes the data conforming to CrocoLake's schema.
 
 ### CrocoLake
 CrocoLake contains each converted dataset. The first step to build it is to create a directory containing symbolic links to the converted datasets (an example script is provided). The submodule `CrocoLakeLoader` then allows to seamlessly load all the converted datasets into memory as one dask dataframe with a uniform schema, using just a few lines. The script `merge_crocolake.py` exploits `CrocoLakeLoader`'s capabilities to generate one merged CrocoLake dataset that contains all the converted datasets and is stored back to disk (in parquet). 
@@ -104,7 +107,7 @@ The `examples` folder contains examples for how to access parquet datasets with 
 I am also trying this, maybe it works better with Fig \autoref{fig:workflow}.
 \begin{figure}[h!]
     \centering
-    \includegraphics[width=\textwidth]{rect234.png}
+    \includegraphics[width=\textwidth]{workflow_01.png}
     \caption{Workflow.\label{fig:workflow}}
 \end{figure}
 
