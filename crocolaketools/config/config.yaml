@@ -19,10 +19,10 @@ CROCOLAKE_PHY:
 ARGO_PHY:
   db: ARGO
   db_type: PHY
-  input_path: /home/enrico/myWHOI/CrocoLake/ctp-fork/scripts/data/parquet/PHY_ARGO-GDAC/2025-04-23/
-  outdir_pq: /home/enrico/myWHOI/CrocoLake/ctp-fork/scripts/data/parquet/PHY_ARGO-QC/2025-04-24/
+  input_path: ../demo/demo_ARGO_PQT_PHY/
+  outdir_pq: ../demo/parquet/demo_ARGO-QC_PHY/
   outdir_schema: ./schema/
-  fname_pq: PHY_ARGO-QC
+  fname_pq: demo_ARGO-QC_PHY
   add_derived_vars: True
   overwrite: False
   tmp_path:
@@ -30,10 +30,10 @@ ARGO_PHY:
 ARGO_BGC:
   db: ARGO
   db_type: BGC
-  input_path: /home/enrico/myWHOI/CrocoLake/ctp-fork/scripts/data/parquet/BGC_ARGO-GDAC/2025-04-23/
-  outdir_pq: /home/enrico/myWHOI/CrocoLake/ctp-fork/scripts/data/parquet/BGC_ARGO-QC/2025-04-23/
+  input_path: ../demo/demo_ARGO_PQT_BGC/
+  outdir_pq: ../demo/parquet/demo_ARGO-QC_BGC/
   outdir_schema: ./schema/
-  fname_pq: BGC_ARGO-QC
+  fname_pq: demo_ARGO-QC_BGC
   add_derived_vars: True
   overwrite: False
   tmp_path:
@@ -42,10 +42,10 @@ ARGO_BGC:
 GLODAP_PHY:
   db: GLODAP
   db_type: PHY
-  input_path: /home/enrico/myWHOI/databases/GLODAP/v2.2023/
-  outdir_pq: /home/enrico/myWHOI/databases/GLODAP/v2.2023/parquet/
+  input_path: ../demo/demo_GLODAP/
+  outdir_pq: ../demo/parquet/demo_GLODAP_PHY/
   outdir_schema: ./schema/
-  fname_pq: 1101_PHY_GLODAP
+  fname_pq: demo_GLODAP_PHY
   add_derived_vars: False
   overwrite: False
   tmp_path:
@@ -53,10 +53,10 @@ GLODAP_PHY:
 GLODAP_BGC:
   db: GLODAP
   db_type: BGC
-  input_path: /home/enrico/myWHOI/databases/GLODAP/v2.2023/
-  outdir_pq: /home/enrico/myWHOI/databases/GLODAP/v2.2023/parquet_bgc/
+  input_path: ../demo/demo_GLODAP/
+  outdir_pq: ../demo/parquet/demo_GLODAP_BGC/
   outdir_schema: ./schema/
-  fname_pq: 1101_BGC_GLODAP
+  fname_pq: demo_GLODAP_BGC
   add_derived_vars: True
   overwrite: False
   tmp_path:
@@ -65,21 +65,21 @@ GLODAP_BGC:
 SprayGliders_PHY:
   db: SprayGliders
   db_type: PHY
-  input_path: /home/enrico/myWHOI/CrocoLake/ctp-fork/scripts/data/spray_phy
-  outdir_pq: /home/enrico/myWHOI/CrocoLake/ctp-fork/scripts/data/parquet/PHY_SPRAY/2025-04-23/
+  input_path: ../demo/demo_SPRAY_PHY/
+  outdir_pq: ../demo/parquet/demo_SPRAY_PHY/
   outdir_schema: ./schemas/
-  fname_pq: 1201_PHY_SPRAY
+  fname_pq: demo_SPRAY_PHY
   add_derived_vars: True
   overwrite: False
-  tmp_path: /home/enrico/myWHOI/CrocoLake/ctp-fork/scripts/data/tmp_spray_phy/
+  tmp_path: ../demo/demo_tmp_SPRAY_PHY/
 
 SprayGliders_BGC:
   db: SprayGliders
   db_type: BGC
-  input_path: /home/enrico/myWHOI/CrocoLake/ctp-fork/scripts/data/spray_bgc
-  outdir_pq: /home/enrico/myWHOI/CrocoLake/ctp-fork/scripts/data/parquet/BGC_SPRAY/2025-04-23/
+  input_path: ../demo/demo_SPRAY_BGC/
+  outdir_pq: ../demo/parquet/demo_SPRAY_BGC/
   outdir_schema: ./schemas/
-  fname_pq: 1201_BGC_SPRAY
+  fname_pq: demo_SPRAY_BGC
   add_derived_vars: True
   overwrite: False
-  tmp_path: /home/enrico/myWHOI/CrocoLake/ctp-fork/scripts/data/tmp_spray_bgc/
+  tmp_path: ../demo/demo_tmp_SPRAY_BGC/

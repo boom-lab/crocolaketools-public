@@ -62,6 +62,7 @@ class Converter:
             db_type = config['db_type'].upper()
 
             config_path = importlib.resources.files("crocolaketools.config").joinpath("config.yaml")
+            base_path = importlib.resources.files("crocolaketools.config")
             config_disk = yaml.safe_load(open(config_path))
             config_disk = config_disk[db + "_" + db_type]
 
@@ -79,13 +80,16 @@ class Converter:
             print("Converter configuration:")
             print(config)
 
-            input_path = config["input_path"]
-            outdir_pq = config["outdir_pq"]
-            outdir_schema = config["outdir_schema"]
+            input_path = os.path.abspath(os.path.join(base_path, config["input_path"]))
+            outdir_pq = os.path.abspath(os.path.join(base_path, config["outdir_pq"]))
+            outdir_schema = os.path.abspath(os.path.join(base_path, config["outdir_schema"]))
             fname_pq = config["fname_pq"]
             add_derived_vars = config["add_derived_vars"]
             overwrite = config["overwrite"]
-            tmp_path = config["tmp_path"]
+            if config["tmp_path"] is None:
+                tmp_path = None
+            else:
+                tmp_path = os.path.abspath(os.path.join(base_path, config["tmp_path"]))
 
         else:
             raise ValueError("No config argument provided.")
@@ -114,6 +118,8 @@ class Converter:
             raise ValueError("No input file path provided.")
         if input_path[-1] != "/":
             input_path = input_path + "/"
+        if len(os.listdir(input_path))==0:
+            raise ValueError(f"Input folder {input_path} is empty. If you are using config.yaml, is the relative path correct?")
         self.input_path = input_path
         print("Original files read from " + self.input_path)
 
