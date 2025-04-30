@@ -104,11 +104,17 @@ The `examples` folder contains examples for how to access parquet datasets with 
 
 # Figures
 
-I am also trying this, maybe it works better with Fig \autoref{fig:workflow}.
+Workflow steps are in \autoref{fig:workflow01} and Fig. \autoref{fig:workflow02}.
 \begin{figure}[h!]
     \centering
     \includegraphics[width=\textwidth]{workflow_01.png}
-    \caption{Workflow.\label{fig:workflow}}
+    \caption{Workflow.\label{fig:workflow01}}
+\end{figure}
+
+\begin{figure}[h!]
+    \centering
+    \includegraphics[width=\textwidth]{workflow_02.png}
+    \caption{Workflow.\label{fig:workflow02}}
 \end{figure}
 
 
