@@ -21,13 +21,13 @@ databases_codenames = {}
 databases_codenames["ARGO"] = "ARGO" #"ARGO-CLOUD"
 databases_codenames["GLODAP"] = "GLODAP"#"GLODAP-DEV"
 databases_codenames["SprayGliders"] = "SPRAY"#"SPRAY-DEV"
-databases_codenames["CPR"] = "CPR"#"CPR-DEV"
+databases_codenames["CPR"] = "CPR"#"SPRAY-DEV"
 databases_codenames["Saildrones"] = "SAILDRONES"#"SAILDRONES-DEV"
 
 params = {}
 
 #------------------------------------------------------------------------------#
-# TRITON
+# CROCOLAKE
 #
 # standardized names for merged database
 #
@@ -38,7 +38,7 @@ params = {}
 # version; ideally, this is needed only for Argo data (and maybe not at all, see
 # Argo dictionaries later in file)
 #
-params["TRITON_PHY_QC"] = [
+params["CROCOLAKE_PHY_QC"] = [
     'DB_NAME',
     'PLATFORM_NUMBER',
     'DATA_MODE',
@@ -56,7 +56,7 @@ params["TRITON_PHY_QC"] = [
     'PSAL_ERROR'
 ]
 
-params["TRITON_PHY_ALL"] = [
+params["CROCOLAKE_PHY_ALL"] = [
     'DB_NAME',
     'PLATFORM_NUMBER',
     'DATA_MODE',
@@ -80,7 +80,7 @@ params["TRITON_PHY_ALL"] = [
     'PSAL_ADJUSTED_ERROR'
 ]
 
-params["TRITON_BGC_QC"] = [
+params["CROCOLAKE_BGC_QC"] = [
     'DB_NAME',
     'PLATFORM_NUMBER',
     'LATITUDE',
@@ -240,7 +240,7 @@ params["TRITON_BGC_QC"] = [
     'SF6_DATA_MODE',
 ]
 
-params["TRITON_BGC_ALL"] = [
+params["CROCOLAKE_BGC_ALL"] = [
     'DB_NAME',
     'PLATFORM_NUMBER',
     'LATITUDE',
@@ -490,9 +490,9 @@ params["GLODAP"] = [
 ]
 
 #
-# dict for renaming parameters to triton names
+# dict for renaming parameters to crocolake names
 #
-params["GLODAP2TRITON"] = {
+params["GLODAP2CROCOLAKE"] = {
     'G2expocode' : 'PLATFORM_NUMBER',
     'G2latitude' : 'LATITUDE',
     'G2longitude' : 'LONGITUDE',
@@ -550,9 +550,9 @@ params['SprayGliders'] = [
 ]
 
 #
-# dict for renaming parameters to triton names
+# dict for renaming parameters to crocolake names
 #
-params["SprayGliders2TRITON"] = {
+params["SprayGliders2CROCOLAKE"] = {
     'mission_name' : 'PLATFORM_NUMBER',
     'lat' : 'LATITUDE',
     'lon' : 'LONGITUDE',
@@ -560,6 +560,7 @@ params["SprayGliders2TRITON"] = {
     'salinity' : 'PSAL',
     'time': 'JULD',
 }
+
 
 #------------------------------------------------------------------------------#
 # CPR (Continuous Plankton Recorder)
@@ -578,14 +579,15 @@ params['CPR'] = [
 ]
 
 #
-# dict for renaming parameters to triton names
+# dict for renaming parameters to crocolake names
 #
-params["CPR2TRITON"] = {
+params["CPR2CROCOLAKE"] = {
     'SampleId' : 'PLATFORM_NUMBER',
     'Latitude' : 'LATITUDE',
     'Longitude' : 'LONGITUDE',
     'MidPoint_Date_UTC' : 'JULD'
 }
+
 
 #------------------------------------------------------------------------------#
 # Saildrones
@@ -677,9 +679,9 @@ params["Saildrones"] = [
 ]
 
 #
-# dict for renaming parameters to triton names
+# dict for renaming parameters to crocolake names
 #
-params["Saildrones2TRITON"] = {
+params["Saildrones2CROCOLAKE"] = {
     'trajectory': 'PLATFORM_NUMBER',
     'latitude': 'LATITUDE',
     'longitude': 'LONGITUDE',
@@ -691,6 +693,7 @@ params["Saildrones2TRITON"] = {
     'CDOM_MEAN': 'CDOM',
     'BKSCT_RED_MEAN': 'BBP700'
 }
+
 
 #------------------------------------------------------------------------------#
 # Argo

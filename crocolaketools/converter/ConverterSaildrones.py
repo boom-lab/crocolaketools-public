@@ -18,7 +18,7 @@ import pandas as pd
 from pandas import ArrowDtype
 import pyarrow as pa
 import xarray as xr
-from crocolaketools.utils import params
+from crocolakeloader import params
 from crocolaketools.converter.converter import Converter
 ##########################################################################
 
@@ -101,11 +101,4 @@ class ConverterSaildrones(Converter):
 
 ##########################################################################
 if __name__ == "__main__":
-    conv = ConverterSaildrones(
-        db="Saildrones",
-        db_type="BGC",
-        input_path="",
-        outdir_pq="",
-        add_derived_vars=True
-    )
-    conv.convert(["TPOS-2024_SD1090_1min.nc"])
+    ConverterSaildrones()
