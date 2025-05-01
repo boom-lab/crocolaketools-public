@@ -15,3 +15,4 @@ bokeh==3.4.3
 pytest
 argopy
 h5netcdf
+yq

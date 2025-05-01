@@ -18,14 +18,9 @@
 CROCOLAKE_PHY:
   db: CROCOLAKE
   db_type: PHY
-  input_path: /home/enrico/myWHOI/CrocoLake/ctp-fork/scripts/data/parquet/PHY_CROCOLAKE_MERGED/2025-04-23/
-  outdir_pq: /home/enrico/myWHOI/CrocoLake/ctp-fork/scripts/data/parquet/PHY_CROCOLAKE_MERGED/2025-04-23/
-  outdir_schema: ./schema/
+  outdir_pq: ../demo/parquet/demo_CROCOLAKE_PHY/
   fname_pq: PHY_CROCOLAKE_MERGED
-  add_derived_vars: True
-  overwrite: False
-  tmp_path:
-  ln_path: /home/enrico/myWHOI/CrocoLake/ctp-fork/scripts/data/parquet/PHY_CROCOLAKE_LN/
+  ln_path: ../demo/parquet/demo_CROCOLAKE_PHY_LN/
 
 # Argo QC
 ARGO_PHY:
