@@ -19,8 +19,15 @@ CROCOLAKE_PHY:
   db: CROCOLAKE
   db_type: PHY
   outdir_pq: ../demo/parquet/demo_CROCOLAKE_PHY/
-  fname_pq: PHY_CROCOLAKE_MERGED
+  fname_pq: PHY_CROCOLAKE
   ln_path: ../demo/parquet/demo_CROCOLAKE_PHY_LN/
+
+CROCOLAKE_BGC:
+  db: CROCOLAKE
+  db_type: BGC
+  outdir_pq: ../demo/parquet/demo_CROCOLAKE_BGC/
+  fname_pq: BGC_CROCOLAKE
+  ln_path: ../demo/parquet/demo_CROCOLAKE_BGC_LN/
 
 # Argo QC
 ARGO_PHY:

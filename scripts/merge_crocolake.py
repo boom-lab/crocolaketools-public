@@ -110,16 +110,20 @@ def main():
         raise ValueError("CrocoLake type must be PHY or BGC.")
 
     if args.config:
-        config_path = importlib.resources.files("crocolaketools.config").joinpath("config.yaml")
-        config = yaml.safe_load(open(config_path))
-        if args.d.upper() == "PHY":
-            args.i = config["CROCOLAKE_PHY"]["ln_path"]
-            args.o = config["CROCOLAKE_PHY"]["outdir_pq"]
-            args.f = config["CROCOLAKE_PHY"]["fname_pq"]
-        elif args.d.upper() == "BGC":
-            args.i = config["CROCOLAKE_BGC"]["ln_path"]
-            args.o = config["CROCOLAKE_BGC"]["outdir_pq"]
-            args.f = config["CROCOLAKE_BGC"]["fname_pq"]
+        config_file = importlib.resources.files("crocolaketools.config").joinpath("config.yaml")
+        config_path = importlib.resources.files("crocolaketools.config")
+        config = yaml.safe_load(open(config_file))
+        args.i = os.path.abspath(
+            os.path.join(
+                config_path, config["CROCOLAKE_"+args.d.upper()]["ln_path"]
+            )
+        )
+        args.o = os.path.abspath(
+            os.path.join(
+                config_path, config["CROCOLAKE_"+args.d.upper()]["outdir_pq"]
+            )
+        )
+        args.f = config["CROCOLAKE_"+args.d.upper()]["fname_pq"]
 
     # Configure logging
     configure_logging(args.f+".log")
