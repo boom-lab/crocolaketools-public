@@ -10,6 +10,8 @@
 ##########################################################################
 import argparse
 import os
+import importlib.resources
+import yaml
 from warnings import simplefilter
 from datetime import datetime
 
@@ -27,15 +29,9 @@ print = functools.partial(print, flush=True)
 
 def spray2parquet(spray_path=None, outdir_pqt=None, fname_pq=None, use_config_file=None):
 
-    # this set up works
-    # it seems that more workers or threads raises memory issues
-    client = Client(
-        threads_per_worker=20,
-        n_workers=1,
-        memory_limit='110GB',
-        processes=True,
-        dashboard_address=':1111',
-    )
+    config_path = importlib.resources.files("crocolaketools.config").joinpath("config_cluster.yaml")
+    config_cluster = yaml.safe_load(open(config_path))
+    client = Client(**config_cluster["SPRAY_GLIDERS"])
 
     if not use_config_file:
         print("Using user-defined configuration")

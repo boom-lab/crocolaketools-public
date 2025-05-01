@@ -5,6 +5,7 @@ __pycache__/
 
 # virtual env and local data
 venv/
+crocolaketools/demo/
 scripts/data/
 scripts/schemas/
 

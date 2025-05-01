@@ -33,6 +33,7 @@ setup(
     package_data={
         "crocolaketools": [
             "config/config.yaml"
+            "config/config_cluster.yaml"
         ]
     }
 )

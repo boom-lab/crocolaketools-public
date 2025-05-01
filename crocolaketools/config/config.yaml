@@ -1,6 +1,18 @@
-# one config per conversion (glodap2parquet, etc)
-# config is read only by converters or downloaders (not by script)
-# every converter needs a config file, no rogue arguments anymore
+# This config file contains the fields for the config dictionary required by the
+# Converter class.
+#
+# DB_NAME_<DB_TYPE>
+#   db: name of the database
+#   db_type: (PHY or BGC)
+#   input_path: path with original files to convert
+#   outdir_pq: destination path for parquet version
+#   outdir_schema: destination path for the schema of the parquet version
+#   fname_pq: basename for the parquet file (e.g. 'filename' would generate 'filename_XXX.parquet' files)
+#   add_derived_vars: True to add derived variables (absolute salinity, conservative temperature, sigma1)
+#   overwrite: True to overwrite any pre-existing parquet dataset in outdir_pq
+#   tmp_path: folder for temporary files (not required by all converters)
+#   ln_path: path to symbolic links to generate CrocoLake (required only when generating CrocoLake with CrocoLakeLoader)
+
 
 # CROCOLAKE
 CROCOLAKE_PHY:

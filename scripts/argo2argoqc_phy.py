@@ -9,6 +9,8 @@
 
 ##########################################################################
 from datetime import datetime
+import importlib.resources
+import yaml
 from warnings import simplefilter
 from dask.distributed import Client
 import pandas as pd
@@ -21,22 +23,20 @@ from crocolaketools.converter.converterArgoQC import ConverterArgoQC
 def argo2argoqc_phy(argo_path,outdir_pqt,fname_pq,use_config_file):
     """Subset ARGO to QC-ed only data"""
 
-    # this set up works
-    # it seems that more workers or threads raises memory issues
-    client = Client(
-        threads_per_worker=1,
-        n_workers=18,
-        memory_limit='auto',
-        processes=True
-    )
+    # Set up config dask cluster from config file
+    config_path = importlib.resources.files("crocolaketools.config").joinpath("config_cluster.yaml")
+    config_cluster = yaml.safe_load(open(config_path))
+    client = Client(**config_cluster["ARGO-QC_PHY"])
 
     if not use_config_file:
         if argo_path is None:
-            raise ValueError("Path to ARGO data is required")
+            raise ValueError("Path to ARGO data argo_path is required")
         if outdir_pqt is None:
-            raise ValueError("Output path is required")
+            raise ValueError("Output path outdir_pqt is required")
+        if fname_pq is None:
+            raise ValueError("Output filename fname_pq is required")
 
-        print("Using user-defined configuration")
+        print("Using run-time user-defined configuration")
         config = {
             'db': 'ARGO',
             'db_type': 'PHY',
