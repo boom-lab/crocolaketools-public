@@ -69,6 +69,13 @@ def argogdac2parquet():
         help=" If not specified, bot Argo Core and BGC profiles are downloaded and/or converted. If 'phy' or 'bgc', only the Core or BGC profiles are downloaded and/or converted."
     )
 
+    parser.add_argument(
+        "--checktime",
+        type=str,
+        default="true",
+        help=" If true, it downloads and replaces files only if the file on the server is newer than the one on disk."
+    )
+
     args = parser.parse_args()
 
     if args.version:
@@ -107,6 +114,9 @@ def argogdac2parquet():
         if "phy" in db:
             downloaderArgo = DownloaderArgoGDAC()
             flist_phy, _, metadata_phy, _ = downloaderArgo.argo_download(gdac_path, outdir_nc, ["phy"], True)
+
+        print("flist_phy: ")
+        print(flist_phy)
 
         if "bgc" in db:
             downloaderArgo = DownloaderArgoGDAC()
