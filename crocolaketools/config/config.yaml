@@ -97,3 +97,26 @@ SprayGliders_BGC:
   add_derived_vars: True
   overwrite: False
   tmp_path: ../demo/demo_tmp_SPRAY_BGC/
+
+# Saildrones
+Saildrones_PHY:
+  db: Saildrones
+  db_type: PHY
+  input_path: D:\GSoC\input\
+  outdir_pq: D:\GSoC\output\
+  outdir_schema: ./schemas/Saildrones/
+  fname_pq: SAILDRONES_PHY
+  add_derived_vars: True
+  overwrite: True
+  tmp_path:
+
+Saildrones_BGC:
+  db: Saildrones
+  db_type: BGC
+  input_path: D:\GSoC\input\
+  outdir_pq: D:\GSoC\output\
+  outdir_schema: ./schemas/Saildrones/
+  fname_pq: SAILDRONES_BGC
+  add_derived_vars: True
+  overwrite: True
+  tmp_path:

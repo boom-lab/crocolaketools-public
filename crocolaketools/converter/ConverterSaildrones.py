@@ -18,17 +18,24 @@ import pandas as pd
 from pandas import ArrowDtype
 import pyarrow as pa
 import xarray as xr
-from crocolakeloader import params
+# from crocolakeloader import params
+from crocolaketools.utils import params
 from crocolaketools.converter.converter import Converter
 ##########################################################################
 
 class ConverterSaildrones(Converter):
     """Converter for Saildrone NetCDF files to TRITON-compatible Parquet format."""
 
-    def __init__(self, db=None, db_type=None, input_path=None, outdir_pq=None, outdir_schema=None, fname_pq=None, add_derived_vars=False, overwrite=False, depth_default=0.5):
-        if db != "Saildrones":
+    def __init__(self, config=None, db_type=None, depth_default=0.5):
+        if config is not None and config.get("db") != "Saildrones":
             raise ValueError("Database must be 'Saildrones'.")
-        super().__init__(db, db_type, input_path, outdir_pq, outdir_schema, fname_pq, add_derived_vars, overwrite)
+        elif config is None and db_type is not None:
+            config = {
+                "db": "Saildrones",
+                "db_type": db_type.upper()
+            }
+
+        super().__init__(config)
         self.depth_default = depth_default
 
     # ------------------------------------------------------------------ #
