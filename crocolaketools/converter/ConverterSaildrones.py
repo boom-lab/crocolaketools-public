@@ -18,8 +18,7 @@ import pandas as pd
 from pandas import ArrowDtype
 import pyarrow as pa
 import xarray as xr
-# from crocolakeloader import params
-from crocolaketools.utils import params
+from crocolakeloader import params
 from crocolaketools.converter.converter import Converter
 ##########################################################################
 

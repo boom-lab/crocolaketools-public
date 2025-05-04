@@ -102,8 +102,8 @@ SprayGliders_BGC:
 Saildrones_PHY:
   db: Saildrones
   db_type: PHY
-  input_path: D:\GSoC\input\
-  outdir_pq: D:\GSoC\output\
+  input_path: ../demo/demo_Saildrones_PHY/
+  outdir_pq: ../demo/parquet/demo_Saildrones_PHY/
   outdir_schema: ./schemas/Saildrones/
   fname_pq: SAILDRONES_PHY
   add_derived_vars: True
@@ -113,8 +113,8 @@ Saildrones_PHY:
 Saildrones_BGC:
   db: Saildrones
   db_type: BGC
-  input_path: D:\GSoC\input\
-  outdir_pq: D:\GSoC\output\
+  input_path: ../demo/demo_Saildrones_BGC/
+  outdir_pq: ../demo/parquet/demo_Saildrones_BGC/
   outdir_schema: ./schemas/Saildrones/
   fname_pq: SAILDRONES_BGC
   add_derived_vars: True
