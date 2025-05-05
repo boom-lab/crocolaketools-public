@@ -120,7 +120,12 @@ class ConverterSprayGliders(Converter):
             if len(chunks[chunk_dim]) > 1 and chunk_dim != "profile":
                 raise ValueError(f"Chunking on {chunk_dim} is not supported; chunking is allowed only on profile.")
 
-        tasks = [self.store_chunks(ds, j, chunk_size, filename, tmp_path, lock) for j, chunk_size in enumerate(chunks["profile"])]
+        chunk_sizes = chunks["profile"]
+        chunks_ends = np.cumsum(chunk_sizes) # slice(i,e) is [i:e], so e is excluded
+        chunks_inits = np.roll(chunks_ends, 1) # slice(i,e) is [i:e], so i is included (it was e of the previous chunkm which was excluded)
+        chunks_inits[0] = 0 # first index
+
+        tasks = [self.store_chunks(ds, j, chunk_init, chunk_end, filename, tmp_path, lock) for j, (chunk_init, chunk_end) in enumerate(zip(chunks_inits, chunks_ends))]
         dask.compute(*tasks)
 
         ds.close()
@@ -130,20 +135,19 @@ class ConverterSprayGliders(Converter):
 #------------------------------------------------------------------------------#
 ## Store netcdf chunks
     @dask.delayed
-    def store_chunks(self, ds, j, chunk_size, filename, tmp_path, lock):
+    def store_chunks(self, ds, j, chunk_init, chunk_end, filename, tmp_path, lock):
         """Store j-th chunk of netCDF file
 
         Arguments:
         ds         -- (chunked) xarray dataset
         j          -- chunk index
-        chunk_size -- size of chunk
+        chunk_init  -- first index of chunk
+        chunk_end  -- last index of chunk
         filename   -- file name, excluding relative path
         tmp_path   -- path to store chunks
         lock       -- dask lock to use for concurrency
         """
 
-        initc = j * chunk_size # first index of chunk
-        endc = initc + chunk_size # last index of chunk
         chunk_filename = f'{filename[:-3]}_chunk_{j}.nc'
         chunk_filepath = os.path.join(tmp_path, chunk_filename)
 
@@ -151,7 +155,7 @@ class ConverterSprayGliders(Converter):
         lock.acquire(timeout=600)
 
         # load into memory the slice of ds that corresponds to chunk
-        ds_tmp = ds.isel(profile=slice(initc, endc)).compute()
+        ds_tmp = ds.isel(profile=slice(chunk_init, chunk_end)).compute()
 
         # store slice to netCDF file
         ds_tmp.to_netcdf(
@@ -177,11 +181,6 @@ class ConverterSprayGliders(Converter):
         results -- list of dask dataframes
         """
 
-        # self.prepare_data(
-        #     flist=flist,
-        #     lock=lock
-        # )
-
         if lock is None:
             warnings.warn("No lock provided. This might lead to concurrency or segmentation fault errors.")
 
@@ -192,6 +191,7 @@ class ConverterSprayGliders(Converter):
             results.append(proc_result)
 
         ddf = dd.from_delayed(results)
+
         self.call_guess_schema = True
 
         return ddf
@@ -229,6 +229,10 @@ class ConverterSprayGliders(Converter):
             with xr.open_dataset(input_fname,cache=True,chunks=None,engine="h5netcdf") as ds:
                 ds_vars = list(ds.data_vars) + list(ds.coords)
                 invars = list(set(params.params["SprayGliders"]) & set(ds_vars))
+                # replacing 'mission' 0-10 indices with corresponding 'mission_name' entries
+                ds["mission"] = ds["mission_name"].isel(trajectory=ds["mission"])
+                ds = ds.drop_vars(["mission_name"])
+                invars.remove("mission_name")
                 df = ds[invars].to_dataframe()
 
         except Exception as e:
@@ -274,6 +278,18 @@ class ConverterSprayGliders(Converter):
 
         # make df consistent with CrocoLake schema
         df = self.standardize_data(df)
+
+        # remove rows that are all NAs
+        cols_to_check = [
+            "TEMP",
+            "PSAL",
+        ]
+        if self.db_type == "BGC":
+            cols_to_check.append("CHLA")
+            cols_to_check.append("DOXY")
+        cols_to_check = [col for col in cols_to_check if col in df.columns]
+
+        df = super().remove_all_NAs(df,cols_to_check)
 
         return df
 
