@@ -238,6 +238,7 @@ class Converter:
                 flist=filenames,
                 lock=lock
             )
+
         else:
             df = self.read_to_df(filenames[0],lock)
             if isinstance(df,pd.DataFrame):
@@ -250,6 +251,8 @@ class Converter:
             ddf = self.add_derived_variables(ddf)
 
         ddf = self.reorder_columns(ddf)
+
+        ddf = ddf.drop_duplicates()
 
         print("repartitioning dask dataframe")
         ddf = ddf.repartition(partition_size="300MB")
