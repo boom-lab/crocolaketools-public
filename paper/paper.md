@@ -77,44 +77,36 @@ community.
 The core task of CrocoLakeTools is to take one or more files from a dataset and convert them to parquet, ensuring that CrocoLake's schema is followed. This is achieved through the methods contained in the `Converter` class and its subclasses. While the conversion of all datasets requires some general functionality (e.g. renaming the original variables to the final schema), each conversion requires specific tools for the specific dataset (e.g. the map used to rename the variable). CrocoLakeTools then hosts a converter for each dataset that implement the specific needs of that datasets and inherits from `Converter`, which contains the shared methods.
 
 ## Workflow
-The first step in the workflow is to retrieve the original files. This is generally left to the user, although we provide methods to download Argo data and we wish to be able in the future to provide this type of tools for other datasets as well. 
+The first step in the workflow is to retrieve the original files. This is generally left to the user, although we provide methods to download Argo data and we wish to be able in the future to provide this type of tools for other datasets as well (\autoref{fig:workflow01}). The second step is to convert the data to parquet, and finally merge the datasets into CrocoLake (\autoref{fig:workflow02}).
 
-### Sources
+### Original sources
 These are the original data provided by the project, mission, scientist, etc.
 The format, schema, nomenclature and conventions are those defined by the individual project and are unaware of CrocoLake's workflow.
 
-### Storage (original)
-Modules to download the original data are optional. They should inherit from the `Downloader` class and be called `downloader<ProjectName>`, e.g. `downloaderArgoGDAC`. Whether a downloader module exists or the user downloads the data themselves, the original data is stored on disk and this is the starting point for the converter. 
+### Local mirrors
+Modules to download the original data are optional. They should inherit from the `Downloader` class and be called `downloader<ProjectName>`, e.g. `downloaderArgoGDAC`. Whether a downloader module exists or the user downloads the data themselves, the original data is stored on disk and this is the starting point for the converter.
 
-### Storage (converted)
+### Parquet datasets
 The core of `CrocoLakeTools` are the modules in the `Converter` class and its subclasses. Each project has its own subclass called `converter<ProjectName>`, e.g. `converterGLODAP`; further specifiers can be added as necessary (e.g. at this time there a few different converters for Argo data to prepare different datasets). The need for a dedicated converter for each project despite the usage of common data formats (e.g. netCDF, CSV) is due to differences in the schema, e.g. variable names, units, etc., while the steps that can be generalized for each format are usually already included in other libraries that `CrocoLakeTools` rely on (e.g. `pandas`, `dask`, `pyarrow`).
 Depending on the dataset, multiple converters can be applied. For example, to create CrocoLake, Argo data goes through two converters:
 1. `converterArgoGDAC`, which converts the original Argo GDAC preserving most of its original conventions;
 2. `converterArgoQC`, which takes the output of the previous step and applies some filtering based on Argo's QC flags and makes the data conforming to CrocoLake's schema.
 
 ### CrocoLake
-CrocoLake contains each converted dataset. The first step to build it is to create a directory containing symbolic links to the converted datasets (an example script is provided). The submodule `CrocoLakeLoader` then allows to seamlessly load all the converted datasets into memory as one dask dataframe with a uniform schema, using just a few lines. The script `merge_crocolake.py` exploits `CrocoLakeLoader`'s capabilities to generate one merged CrocoLake dataset that contains all the converted datasets and is stored back to disk (in parquet). 
+CrocoLake contains each converted dataset. The first step to build it is to create a directory containing symbolic links to the converted datasets (an example script is provided). The submodule `CrocoLakeLoader` then allows to seamlessly load all the converted datasets into memory as one dask dataframe with a uniform schema, using just a few lines. The script `merge_crocolake.py` exploits `CrocoLakeLoader`'s capabilities to generate one merged CrocoLake dataset that contains all the converted datasets and is stored back to disk (in parquet).
 
+CrocoLake can be accessed with several programming languages with just a few lines of codes: the submodules CrocoLake-Python, CrocoLake-Matlab, and CrocoLake-Julia contain tools and examples in some languages. 
 
-## Accessing CrocoLake
-The `examples` folder contains examples for how to access parquet datasets with several programming languages: Python, Matlab, Julia. We hope to include soon R too. Separate open repositories contains more examples for each language, see: CrocoLake-Python, CrocoLake-Matlab, CrocoLake-Julia.
-
-### Example
-[TD ADD FIGURES]
-
-# Figures
-
-Workflow steps are in \autoref{fig:workflow01} and Fig. \autoref{fig:workflow02}.
 \begin{figure}[h!]
     \centering
     \includegraphics[width=\textwidth]{workflow_01.png}
-    \caption{Workflow.\label{fig:workflow01}}
+    \caption{CrocoLake's workflow: `downloader`s. `CrocoLakeTools` is set up to host modules that are dedicated to download the desired datasets from the web. It currently supports the download only of Argo data (solid line subset), and other datasets require the user to download them manually (dashed border subsets).  \label{fig:workflow01}}
 \end{figure}
 
 \begin{figure}[h!]
     \centering
     \includegraphics[width=\textwidth]{workflow_02.png}
-    \caption{Workflow.\label{fig:workflow02}}
+    \caption{CrocoLake's workflowL `converter`s. `converter`s read the data in their original format, transform it following CrocoLake's conventions, converts it to parquet, and stores it back to disk. Each dataset is converted to its own parquet version. Thanks to the submodule `CrocoLakeLoader`, multiple parquet datasets are merged into a uniform dataframe which is save to disk as CrocoLake. For each dataset, a version containing only physical variables (`PHY`) or also biogeochemical variables (`BGC`) can be generated. \label{fig:workflow02}}
 \end{figure}
 
 
