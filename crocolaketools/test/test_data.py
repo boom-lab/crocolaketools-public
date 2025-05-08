@@ -46,10 +46,85 @@ class TestData:
 
 
 #------------------------------------------------------------------------------#
-    def _check_profiles(self,db_name,db_type,db_name_config=None,nc_pattern=None):
+    def _check_profiles(self,db_name,db_type,db_name_config=None):
 
-        """Pick a random variable in a random original netCDF file and find it
-        in the parquet version, check that they are equal"""
+        """Pick a random profile given PLATFORM_NUMBER and N_PROF, check that
+        there is no duplicate row and that it sorted by increasing PRES values"""
+
+        if db_name_config is None:
+            db_name_config = db_name
+
+        config_path = importlib.resources.files("crocolaketools.config").joinpath("config.yaml")
+        config = yaml.safe_load(open(config_path))
+        config = config[db_name_config + "_" + db_type]
+
+        pq_path = config["outdir_pq"]
+
+        ddf_plat_nb = dd.read_parquet(
+            pq_path,
+            columns=["PLATFORM_NUMBER"]
+        )
+        frac = 20/len(ddf_plat_nb.drop_duplicates())
+        sample_frac = np.min([1,frac]) # max 20 entries
+
+        # get random platform numbers
+        platform_numbers = (
+            ddf_plat_nb["PLATFORM_NUMBER"]
+            .drop_duplicates()
+            .sample(frac=sample_frac, random_state=25)
+            .compute()
+        )
+
+        logging.info(platform_numbers)
+
+        for pn in platform_numbers:
+            ddf_prof = dd.read_parquet(
+                pq_path,
+                columns=["N_PROF"],
+                filters=[ ("PLATFORM_NUMBER", "==", pn)]
+            )
+            profs = (
+                ddf_prof["N_PROF"]
+                .drop_duplicates()
+                .compute()
+            )
+
+            # test 10 random profiles
+            for p in random.choices(profs.to_list(), k=np.min([10,len(profs.to_list())])):
+                logging.info(f"PLATFORM_NUMBER = {pn}")
+                logging.info(f"N_PROF = {p}")
+                df = dd.read_parquet(
+                    pq_path,
+                    filters=[
+                        ("PLATFORM_NUMBER", "==", pn),
+                        ("N_PROF", "==", p)
+                    ]
+                )
+
+                df = df.dropna(subset=["PRES"])
+                if len(df) == 0:
+                    # data for this profile are NaNs
+                    continue
+
+                # test that ddf has no duplicates for pressure values
+                df = df[["PRES"]].compute()
+                logging.info(f"len(df): {len(df)}")
+                logging.info(f"len(df.drop_duplicates): {len(df.drop_duplicates())}")
+
+                assert len(df) == len(df.drop_duplicates())
+
+                # test that ddf is sorted by PRES
+                df_pres = df#.dropna()
+                df_pres_shifted = df_pres.shift(-1)
+                for df in [df_pres, df_pres_shifted]:
+                    df = df.drop(df.index[-1], inplace=True)
+
+                condition = (df_pres_shifted >= df_pres).all().all()
+                logging.info(f"condition: {condition}")
+                assert condition
+
+
+
 
 #------------------------------------------------------------------------------#
     def _check_variables_nc(self,db_name,db_type,db_name_config=None,nc_pattern=None):
@@ -227,7 +302,7 @@ class TestData:
         )
 
 #------------------------------------------------------------------------------#
-    def test_data_integrity_argoqc_phy(self):
+    def test_data_integrity_argogdac_phy(self):
         self._check_variables_nc(
             db_type="PHY",
             db_name="Argo",
@@ -236,10 +311,42 @@ class TestData:
         )
 
 #------------------------------------------------------------------------------#
-    def test_data_integrity_argoqc_bgc(self):
+    def test_data_integrity_argogdac_bgc(self):
         self._check_variables_nc(
             db_type="BGC",
             db_name="Argo",
             db_name_config="ARGO-GDAC",
             nc_pattern="*_Sprof.nc"
+        )
+
+#------------------------------------------------------------------------------#
+    def test_profiles_argogdac_phy(self):
+        self._check_profiles(
+            db_type="PHY",
+            db_name="Argo",
+            db_name_config="ARGO-GDAC",
+        )
+
+#------------------------------------------------------------------------------#
+    def test_profiles_argogdac_bgc(self):
+        self._check_profiles(
+            db_type="PHY",
+            db_name="Argo",
+            db_name_config="ARGO-GDAC",
+        )
+
+#------------------------------------------------------------------------------#
+    def test_profiles_argoqc_phy(self):
+        self._check_profiles(
+            db_type="PHY",
+            db_name="Argo",
+            db_name_config="ARGO",
+        )
+
+#------------------------------------------------------------------------------#
+    def test_profiles_argoqc_bgc(self):
+        self._check_profiles(
+            db_type="PHY",
+            db_name="Argo",
+            db_name_config="ARGO",
         )
