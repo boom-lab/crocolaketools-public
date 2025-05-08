@@ -116,8 +116,8 @@ class TestData:
                 # test that ddf is sorted by PRES
                 df_pres = df#.dropna()
                 df_pres_shifted = df_pres.shift(-1)
-                for df in [df_pres, df_pres_shifted]:
-                    df = df.drop(df.index[-1], inplace=True)
+                for df_p in [df_pres, df_pres_shifted]:
+                    df_p = df_p.drop(df_p.index[-1], inplace=True)
 
                 condition = (df_pres_shifted >= df_pres).all().all()
                 logging.info(f"condition: {condition}")
@@ -320,6 +320,20 @@ class TestData:
         )
 
 #------------------------------------------------------------------------------#
+    def test_profiles_spraygliders_phy(self):
+        self._check_profiles(
+            db_type="PHY",
+            db_name="SprayGliders",
+        )
+
+#------------------------------------------------------------------------------#
+    def test_profiles_spraygliders_bgc(self):
+        self._check_profiles(
+            db_type="BGC",
+            db_name="SprayGliders",
+        )
+
+#------------------------------------------------------------------------------#
     def test_profiles_argogdac_phy(self):
         self._check_profiles(
             db_type="PHY",
@@ -330,7 +344,7 @@ class TestData:
 #------------------------------------------------------------------------------#
     def test_profiles_argogdac_bgc(self):
         self._check_profiles(
-            db_type="PHY",
+            db_type="BGC",
             db_name="Argo",
             db_name_config="ARGO-GDAC",
         )
@@ -346,7 +360,7 @@ class TestData:
 #------------------------------------------------------------------------------#
     def test_profiles_argoqc_bgc(self):
         self._check_profiles(
-            db_type="PHY",
+            db_type="BGC",
             db_name="Argo",
             db_name_config="ARGO",
         )
