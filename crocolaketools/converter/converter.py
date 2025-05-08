@@ -254,6 +254,8 @@ class Converter:
 
         ddf = ddf.drop_duplicates()
 
+        ddf = self.sort_rows(ddf)
+
         print("repartitioning dask dataframe")
         ddf = ddf.repartition(partition_size="300MB")
 
@@ -700,6 +702,28 @@ class Converter:
         condition_na = df[ cols_to_check ].isna().all(axis="columns")
         df = df.loc[~condition_na]
         df.reset_index(drop=True, inplace=True)
+
+        return df
+
+#------------------------------------------------------------------------------#
+## Sort rows
+    def sort_rows(self,df):
+        """Sort dataframe's rows hierarchically by PLATFORM_NUMBER, N_PROF, and
+        PRES. This should ensure that profiles are sorted correctly
+
+        Arguments:
+        df  --  pandas dataframe
+
+        Returns:
+        df -- sorted dataframe
+
+        """
+
+        df = df.sort_values(
+            by=["PLATFORM_NUMBER", "N_PROF", "PRES"],
+            ascending=[True, True, True],
+            ignore_index=True
+        )
 
         return df
 
