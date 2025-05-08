@@ -52,6 +52,19 @@ ARGO_BGC:
   overwrite: False
   tmp_path:
 
+# Argo GDAC
+ARGO-GDAC_PHY:
+  db: ARGO-GDAC
+  db_type: PHY
+  input_path: ../demo/demo_ARGO_GDAC/GDAC/dac/
+  outdir_pq: ../demo/parquet/demo_ARGO-GDAC_PHY/
+
+ARGO-GDAC_BGC:
+  db: ARGO-GDAC
+  db_type: BGC
+  input_path: ../demo/demo_ARGO_GDAC/GDAC/dac/
+  outdir_pq: ../demo/parquet/demo_ARGO-GDAC_BGC/
+
 # GLODAP config
 GLODAP_PHY:
   db: GLODAP
