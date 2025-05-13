@@ -1093,12 +1093,14 @@ class TestConverter:
         Test that the Saildrone NetCDF file is correctly read into a pandas DataFrame.
         """
         converter = ConverterSaildrones(
-            db="Saildrones",
-            db_type="BGC",
-            input_path=saildrones_path,
-            outdir_pq=outdir_saildrones_pqt,
-            outdir_schema="./schemas/Saildrones/",
-            fname_pq="test_saildrones"
+            config={
+                "db": "Saildrones",
+                "db_type": "BGC",
+                "input_path": saildrones_path,
+                "outdir_pq": outdir_saildrones_pqt,
+                "outdir_schema": "./schemas/Saildrones/",
+                "fname_pq": "test_saildrones"
+            }
         )
 
         df = converter.read_to_df(filename="TPOS-2023_SD1030_1min.nc")
@@ -1116,12 +1118,14 @@ class TestConverter:
         Test that the Saildrone DataFrame is correctly standardized.
         """
         converter = ConverterSaildrones(
-            db="Saildrones",
-            db_type="BGC",
-            input_path=saildrones_path,
-            outdir_pq=outdir_saildrones_pqt,
-            outdir_schema="./schemas/Saildrones/",
-            fname_pq="test_saildrones"
+            config={
+                "db": "Saildrones",
+                "db_type": "BGC",
+                "input_path": saildrones_path,
+                "outdir_pq": outdir_saildrones_pqt,
+                "outdir_schema": "./schemas/Saildrones/",
+                "fname_pq": "test_saildrones"
+            }
         )
 
         sample_data = {
@@ -1170,12 +1174,14 @@ class TestConverter:
         os.makedirs(outdir_saildrones_pqt, exist_ok=True)
 
         converter = ConverterSaildrones(
-            db="Saildrones",
-            db_type="BGC",
-            input_path=saildrones_path,
-            outdir_pq=outdir_saildrones_pqt,
-            outdir_schema="./schemas/Saildrones/",
-            fname_pq="test_saildrones"
+            config={
+                "db": "Saildrones",
+                "db_type": "BGC",
+                "input_path": saildrones_path,
+                "outdir_pq": outdir_saildrones_pqt,
+                "outdir_schema": "./schemas/Saildrones/",
+                "fname_pq": "test_saildrones"
+            }
         )
 
         # Convert a sample Saildrone NetCDF file
@@ -1199,3 +1205,10 @@ class TestConverter:
         assert "CHLA" in df.columns
         assert "BBP700" in df.columns
         assert "CDOM" in df.columns
+        assert "PRES_QC" in df.columns
+        assert "TEMP_QC" in df.columns
+        assert "PSAL_QC" in df.columns
+        assert "DOXY_QC" in df.columns
+        assert "BBP700_QC" in df.columns
+        assert "CHLA_QC" in df.columns
+        assert "CDOM_QC" in df.columns

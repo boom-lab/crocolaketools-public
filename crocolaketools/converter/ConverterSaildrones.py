@@ -98,7 +98,7 @@ class ConverterSaildrones(Converter):
 
         qc_vars = ["TEMP", "PSAL", "PRES"]
         if self.db_type == "BGC":
-            qc_vars = ["DOXY", "CHLA", "CDOM", "BBP700"]
+            qc_vars += ["DOXY", "CHLA", "CDOM", "BBP700"]
 
         # add qc flag = 1 for temperature and salinity
         df = super().add_qc_flags(df, [v for v in qc_vars if v in df.columns], 1)

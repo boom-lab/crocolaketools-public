@@ -58,7 +58,6 @@ def saildrones2parquet(saildrones_path=None, outdir_pqt=None, fname_pq=None, db_
 
     converter = ConverterSaildrones(config=config)
     converter.convert(saildrones_names)
-    del converter
 
     return
 
