@@ -97,8 +97,6 @@ SprayGliders_BGC:
   add_derived_vars: True
   overwrite: False
   tmp_path: ../demo/demo_tmp_SPRAY_BGC/
-<<<<<<< Updated upstream
-=======
 
 # Saildrones
 Saildrones_PHY:
@@ -122,4 +120,3 @@ Saildrones_BGC:
   add_derived_vars: True
   overwrite: True
   tmp_path:
->>>>>>> Stashed changes
