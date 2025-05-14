@@ -21,7 +21,8 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 import shutil
 import xarray as xr
-from crocolakeloader import params
+# from crocolakeloader import params
+from crocolaketools.utils import params
 ##########################################################################
 
 

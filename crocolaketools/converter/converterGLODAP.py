@@ -17,7 +17,8 @@ import pandas as pd
 import pyarrow as pa
 import pyarrow.parquet as pq
 import xarray as xr
-from crocolakeloader import params
+# from crocolakeloader import params
+from crocolaketools.utils import params
 from crocolaketools.converter.converter import Converter
 ##########################################################################
 

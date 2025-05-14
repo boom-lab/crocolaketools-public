@@ -17,7 +17,8 @@ from pathlib import Path
 import pyarrow as pa
 import time
 import xarray as xr
-from crocolakeloader import params
+# from crocolakeloader import params
+from crocolaketools.utils import params
 from crocolaketools.converter.converter import Converter
 from crocolaketools.converter.dask_tools import daskTools
 from crocolaketools.converter.generate_schema import generateSchema
