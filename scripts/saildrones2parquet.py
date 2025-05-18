@@ -14,50 +14,63 @@ from warnings import simplefilter
 import pandas as pd
 import os
 import glob
-import yaml
 
 # Ignore pandas performance warnings
 simplefilter(action="ignore", category=pd.errors.PerformanceWarning)
 
-from crocolaketools.converter.ConverterSaildrones import ConverterSaildrones
+from crocolaketools.converter.converterSaildrones import ConverterSaildrones
 ##########################################################################
 
-def saildrones2parquet(saildrones_path=None, outdir_pqt=None, fname_pq=None, db_type="BGC", config_key=None):
+def saildrones2parquet(saildrones_path=None, outdir_pqt_phy=None, outdir_pqt_bgc=None, fname_pq=None, use_config_file=False):
     """Convert Saildrone NetCDF files to Parquet format"""
 
-    if config_key is None:
+    if not use_config_file:
         print("Using user-defined configuration")
-
-        config = {
+        
+        # Process physical variables
+        config_phy = {
             'db': 'Saildrones',
-            'db_type': db_type.upper(),
+            'db_type': 'PHY',
             'input_path': saildrones_path,
-            'outdir_pq': outdir_pqt,
+            'outdir_pq': outdir_pqt_phy,
             'outdir_schema': './schemas/Saildrones/',
-            'fname_pq': fname_pq,
+            'fname_pq': f"{fname_pq}_PHY" if fname_pq else None,
             'add_derived_vars': True,
             'overwrite': True
         }
+        converter_phy = ConverterSaildrones(config_phy)
+        
+        # Process BGC variables
+        config_bgc = {
+            'db': 'Saildrones',
+            'db_type': 'BGC',
+            'input_path': saildrones_path,
+            'outdir_pq': outdir_pqt_bgc,
+            'outdir_schema': './schemas/Saildrones/',
+            'fname_pq': f"{fname_pq}_BGC" if fname_pq else None,
+            'add_derived_vars': True,
+            'overwrite': True
+        }
+        converter_bgc = ConverterSaildrones(config_bgc)
 
+        saildrones_files = glob.glob(os.path.join(saildrones_path, '*.nc'))
+        saildrones_names = [os.path.basename(f) for f in saildrones_files]
+
+        print(f"Saildrone files to process:")
+        for f in saildrones_names:
+            print(f"  - {f}")
+
+        converter_phy.convert(saildrones_names)
+        converter_bgc.convert(saildrones_names)
+
+        del converter_phy, converter_bgc
     else:
-        print(f"Using configuration from config.yaml: {config_key}")
-        with open('../crocolaketools/config/config.yaml', 'r') as f:
-            full_config = yaml.safe_load(f)
-
-        if config_key not in full_config:
-            raise ValueError(f"Config key '{config_key}' not found in config.yaml")
-
-        config = full_config[config_key]
-
-    saildrones_files = glob.glob(os.path.join(config["input_path"], '*.nc'))
-    saildrones_names = [os.path.basename(f) for f in saildrones_files]
-
-    print(f"Saildrone {config['db_type']} files to process:")
-    for f in saildrones_names:
-        print(f"  - {f}")
-
-    converter = ConverterSaildrones(config=config)
-    converter.convert(saildrones_names)
+        print("Using configuration from config.yaml")
+        converter_phy = ConverterSaildrones(db_type='phy')
+        converter_bgc = ConverterSaildrones(db_type='bgc')
+        converter_phy.convert()
+        converter_bgc.convert()
+        del converter_phy, converter_bgc
 
     return
 
@@ -65,19 +78,19 @@ def saildrones2parquet(saildrones_path=None, outdir_pqt=None, fname_pq=None, db_
 def main():
     parser = argparse.ArgumentParser(description='Convert Saildrone NetCDF files to Parquet format')
     parser.add_argument('-i', help='Path to Saildrone NetCDF files (if not using config.yaml)', required=False, default=None)
-    parser.add_argument('--out', help='Destination path for Parquet output (if not using config.yaml)', required=False, default=None)
+    parser.add_argument('--phy', help='Destination path for physical-variables database', required=False, default=None)
+    parser.add_argument('--bgc', help='Destination path for bgc-variables database', required=False, default=None)
     parser.add_argument('-b', help='Basename for output files', required=False, default='1300_SAILDRONES')
-    parser.add_argument('-t', '--type', help='Data type: BGC or PHY', choices=['BGC', 'PHY'], default='BGC')
-    parser.add_argument('--config', help='Use config.yaml with specified key (e.g., SAILDRONES_PHY)', required=False, default=None)
+    parser.add_argument('--config', help='Use config.yaml instead of command-line arguments', action='store_true', required=False)
 
     args = parser.parse_args()
 
     saildrones2parquet(
         saildrones_path=args.i,
-        outdir_pqt=args.out,
-        fname_pq=f"{args.b}_{args.type.upper()}",
-        db_type=args.type,
-        config_key=args.config
+        outdir_pqt_phy=args.phy,
+        outdir_pqt_bgc=args.bgc,
+        fname_pq=args.b,
+        use_config_file=args.config
     )
 
 ##########################################################################
