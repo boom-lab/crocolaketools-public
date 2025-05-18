@@ -25,7 +25,7 @@ from crocolaketools.converter.converter import Converter
 class ConverterSaildrones(Converter):
     """Converter for Saildrone NetCDF files to TRITON-compatible Parquet format."""
 
-    def __init__(self, config=None, db_type=None, depth_default=0.5):
+    def __init__(self, config=None, db_type=None):
         if config is not None and config.get("db") != "Saildrones":
             raise ValueError("Database must be 'Saildrones'.")
         elif config is None and db_type is not None:
@@ -35,14 +35,10 @@ class ConverterSaildrones(Converter):
             }
 
         super().__init__(config)
-        self.depth_default = depth_default
 
     # ------------------------------------------------------------------ #
     # Methods                                                            #
     # ------------------------------------------------------------------ #
-
-    #------------------------------------------------------------------------------#
-    ## Read file to convert into a pandas dataframe
 
     def read_to_df(self, filename=None, lock=None):
         """Read a Saildrone NetCDF file into a standardized pandas DataFrame."""
@@ -60,49 +56,51 @@ class ConverterSaildrones(Converter):
         if "time" in df.columns:
             df["time"] = pd.to_datetime(df["time"], errors="coerce").astype(ArrowDtype(pa.timestamp("ns")))
 
-        # Handle missing values in temperature
-        if "TEMP_SBE37_MEAN" in df.columns:
-            temp_series = df["TEMP_SBE37_MEAN"].copy()
-        else:
-            temp_series = pd.Series([np.nan] * len(df), index=df.index)
+        # Assign depths based on metadata and known sensor installation
+        depth_map = {
+            "TEMP_SBE37_MEAN": 1.7,
+            "PSAL_SBE37_MEAN": 1.7,
+            "O2_CONC_SBE37_MEAN": 1.7,
+            "TEMP_DEPTH_HALFMETER_MEAN": 0.5
+        }
 
-        # Fill missing values from the fallback column, if it exists
-        if "TEMP_DEPTH_HALFMETER_MEAN" in df.columns:
-            temp_series = temp_series.fillna(df["TEMP_DEPTH_HALFMETER_MEAN"])
+        # Update depth column where valid readings exist for each variable
+        for var_name, assigned_depth in depth_map.items():
+            if var_name in df.columns:
+                count = df[var_name].notna().sum()
+                df.loc[df[var_name].notna(), "depth"] = assigned_depth
+                print(f"Assigned depth {assigned_depth}m to {count} records from variable '{var_name}'")
 
-        df["TEMP_SBE37_MEAN"] = temp_series
-
-        df = df.reindex(columns=params.params["Saildrones"])
         df = self.standardize_data(df)
-
         return df
 
-
-    #------------------------------------------------------------------------------#
+    # ------------------------------------------------------------------ #
     ## Convert parquet schema to xarray
 
     def standardize_data(self, df):
-        """Standardize and align Saildrone data with TRITON schema."""
+        """Standardize xarray dataset to schema consistent across databases
 
-        # convert depth to pressure using the Gibbs SeaWater (GSW) Oceanographic
-        # Toolbox of TEOS-10
-        if "latitude" in df.columns:
-            df["PRES"] = gsw.p_from_z(-self.depth_default, df["latitude"])
-        else:
-            warnings.warn("Latitude missing; cannot compute PRES. Setting to NaN.")
-            df["PRES"] = np.nan
+        Argument:
+        ds -- xarray dataset
+
+        Returns:
+        df -- homogenized dataframe
+        """
+
+        if "latitude" not in df.columns or df["latitude"].isna().all():
+            raise ValueError("Latitude is missing or NaN in the dataset. Cannot compute pressure.")
+
+        df["PRES"] = gsw.p_from_z(-df["depth"], df["latitude"])
         df["PRES"] = df["PRES"].astype("float32[pyarrow]")
 
-        # standardize data and generate schemas
         df = super().standardize_data(df)
 
         qc_vars = ["TEMP", "PSAL", "PRES"]
         if self.db_type == "BGC":
             qc_vars += ["DOXY", "CHLA", "CDOM", "BBP700"]
 
-        # add qc flag = 1 for temperature and salinity
-        df = super().add_qc_flags(df, [v for v in qc_vars if v in df.columns], 1)
-
+        df = super().add_qc_flags(df, qc_vars, 1)
+        
         return df
 
 ##########################################################################
