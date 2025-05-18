@@ -24,12 +24,13 @@ setup(
             'argo2argoqc_bgc = scripts.argo2argoqc_bgc:main',
             'glodap2parquet = scripts.glodap2parquet:main',
             'spray2parquet = scripts.spray2parquet:main',
+            'saildrones2parquet = scripts.saildrones2parquet:main',
             'argogdac2parquet = scripts.argogdac2parquet:argogdac2parquet',
             'merge_crocolake = scripts.merge_crocolake:main',
             'generate_crocolake_symlinks = tools.generate_crocolake_symlinks:main',
         ],
     },
-    include_packages_data=True,
+    include_package_data=True,
     package_data={
         "crocolaketools": [
             "config/config.yaml"
