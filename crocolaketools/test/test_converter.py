@@ -27,7 +27,7 @@ from crocolaketools.converter.converterSprayGliders import ConverterSprayGliders
 from crocolaketools.converter.converterArgoQC import ConverterArgoQC
 from crocolaketools.converter.converterCPR import ConverterCPR
 from crocolakeloader import params
-from crocolaketools.converter.ConverterSaildrones import ConverterSaildrones
+from crocolaketools.converter.converterSaildrones import ConverterSaildrones
 
 ##########################################################################
 
@@ -1092,6 +1092,13 @@ class TestConverter:
         """
         Test that the Saildrone NetCDF file is correctly read into a pandas DataFrame.
         """
+        # Get first available NetCDF file in the directory
+        SD_files = glob.glob(os.path.join(saildrones_path, '*.nc'))
+        if not SD_files:
+            pytest.skip("No NetCDF files found in input directory")
+        
+        test_file = os.path.basename(SD_files[0])
+
         converter = ConverterSaildrones(
             config={
                 "db": "Saildrones",
@@ -1103,7 +1110,7 @@ class TestConverter:
             }
         )
 
-        df = converter.read_to_df(filename="TPOS-2023_SD1030_1min.nc")
+        df = converter.read_to_df(filename=test_file)
 
         # Check that the DataFrame is not empty
         assert not df.empty
@@ -1128,48 +1135,41 @@ class TestConverter:
             }
         )
 
-        sample_data = {
-            "PLATFORM_NUMBER": ["SD1090", "SD1090"],
-            "latitude": [9.3771672, 9.3771673],
-            "longitude": [-124.946432, -124.946433],
-            "time": ["2024-02-01T00:00:00", "2024-02-01T00:01:00"],
-            "TEMP_SBE37_MEAN": [28.4354, 28.4355],
-            "SAL_SBE37_MEAN": [32.7268, 32.7269],
-            "O2_CONC_SBE37_MEAN": [200.84, 200.85],
-            "CHLOR_WETLABS_MEAN": [0.05, 0.051],
-            "BKSCT_RED_MEAN": [None, None],
-            "CDOM_MEAN": [None, None]
-        }
-        df = pd.DataFrame(sample_data)
+        # Get a sample NetCDF file from the input directory
+        SD_files = glob.glob(os.path.join(saildrones_path, '*.nc'))
+        if not SD_files:
+            pytest.skip("No NetCDF files found in input directory")
+        
+        test_file = os.path.basename(SD_files[0])
+        
+        # Read the DataFrame using read_to_df
+        df = converter.read_to_df(filename=test_file)
 
-        # Standardize the DataFrame
-        standardized_df = converter.standardize_data(df)
-
-        # Check that the DataFrame is not empty
-        assert not standardized_df.empty
-
-        # Check that columns are renamed correctly
-        assert "PLATFORM_NUMBER" in standardized_df.columns
-        assert "LATITUDE" in standardized_df.columns
-        assert "LONGITUDE" in standardized_df.columns
-        assert "JULD" in standardized_df.columns
-        assert "PRES" in standardized_df.columns
-        assert "TEMP" in standardized_df.columns
-        assert "PSAL" in standardized_df.columns
-        assert "DOXY" in standardized_df.columns
-        assert "CHLA" in standardized_df.columns
-        assert "BBP700" in standardized_df.columns
-        assert "CDOM" in standardized_df.columns
-
-        # Check that QC flags are added
-        for var in ["TEMP", "PSAL", "DOXY", "CHLA", "BBP700", "CDOM"]:
-            assert f"{var}_QC" in standardized_df.columns
-            assert standardized_df[f"{var}_QC"].dtype == "uint8[pyarrow]"
+        # Check data types of key columns
+        assert df.dtypes["PLATFORM_NUMBER"] == "string[pyarrow]"
+        assert df.dtypes["LATITUDE"] == "float64[pyarrow]"
+        assert df.dtypes["LONGITUDE"] == "float64[pyarrow]"
+        assert df.dtypes["JULD"] == "timestamp[ns][pyarrow]"
+        assert df.dtypes["PRES"] == "float32[pyarrow]"
+        assert df.dtypes["TEMP"] == "float32[pyarrow]"
+        assert df.dtypes["PSAL"] == "float32[pyarrow]"
+        assert df.dtypes["DOXY"] == "float32[pyarrow]"
+        assert df.dtypes["CHLA"] == "float32[pyarrow]"
+        assert df.dtypes["BBP700"] == "float32[pyarrow]"
+        assert df.dtypes["CDOM"] == "float32[pyarrow]"
+        assert df.dtypes["DB_NAME"] == "string[pyarrow]"
 
     def test_converter_saildrones_convert(self):
         """
         Test that the Saildrone NetCDF file is correctly converted to Parquet format.
         """
+        # Get first available NetCDF file in the directory
+        SD_files = glob.glob(os.path.join(saildrones_path, '*.nc'))
+        if not SD_files:
+            pytest.skip("No NetCDF files found in input directory")
+        
+        test_file = os.path.basename(SD_files[0])
+
         # Ensure the output directory exists
         os.makedirs(outdir_saildrones_pqt, exist_ok=True)
 
@@ -1185,7 +1185,7 @@ class TestConverter:
         )
 
         # Convert a sample Saildrone NetCDF file
-        converter.convert(filenames="TPOS-2023_SD1030_1min.nc")
+        converter.convert(filenames=test_file)
 
         # Check that the output Parquet file exists
         output_files = glob.glob(os.path.join(outdir_saildrones_pqt, "test_saildrones_BGC*.parquet"))

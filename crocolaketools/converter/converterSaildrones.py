@@ -90,6 +90,7 @@ class ConverterSaildrones(Converter):
         if "latitude" not in df.columns or df["latitude"].isna().all():
             raise ValueError("Latitude is missing or NaN in the dataset. Cannot compute pressure.")
 
+        # GSW expects depth to be negative (below sea level), so we negate it here
         df["PRES"] = gsw.p_from_z(-df["depth"], df["latitude"])
         df["PRES"] = df["PRES"].astype("float32[pyarrow]")
 
