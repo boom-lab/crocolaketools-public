@@ -26,8 +26,8 @@ import xarray as xr
 from crocolaketools.converter.converterSprayGliders import ConverterSprayGliders
 from crocolaketools.converter.converterArgoQC import ConverterArgoQC
 from crocolaketools.converter.converterCPR import ConverterCPR
-from crocolakeloader import params
 from crocolaketools.converter.converterSaildrones import ConverterSaildrones
+from crocolakeloader import params
 
 ##########################################################################
 

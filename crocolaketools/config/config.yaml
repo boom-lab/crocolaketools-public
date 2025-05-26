@@ -105,7 +105,7 @@ Saildrones_PHY:
   input_path: ../demo/demo_Saildrones_PHY/
   outdir_pq: ../demo/parquet/demo_Saildrones_PHY/
   outdir_schema: ./schemas/Saildrones/
-  fname_pq: SAILDRONES_PHY
+  fname_pq: demo_SAILDRONES_PHY
   add_derived_vars: True
   overwrite: True
   tmp_path:
@@ -116,7 +116,7 @@ Saildrones_BGC:
   input_path: ../demo/demo_Saildrones_BGC/
   outdir_pq: ../demo/parquet/demo_Saildrones_BGC/
   outdir_schema: ./schemas/Saildrones/
-  fname_pq: SAILDRONES_BGC
+  fname_pq: demo_SAILDRONES_BGC
   add_derived_vars: True
   overwrite: True
   tmp_path:
