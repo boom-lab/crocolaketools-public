@@ -29,10 +29,10 @@ setup(
             'generate_crocolake_symlinks = tools.generate_crocolake_symlinks:main',
         ],
     },
-    include_packages_data=True,
+    include_package_data=True,
     package_data={
         "crocolaketools": [
-            "config/config.yaml"
+            "config/config.yaml",
             "config/config_cluster.yaml"
         ]
     }

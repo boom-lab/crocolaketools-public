@@ -349,7 +349,7 @@ class Converter:
                 append = True
                 overwrite = False
             else:
-                raise ValueError("Folder exists and contains files. Overwrite is set to False, but no append is possible. Please remove the folder or set overwrite to True.")
+                print("Folder exists and contains files. All content is being removed before and new files created.")
 
         df.to_parquet(
             self.outdir_pq,

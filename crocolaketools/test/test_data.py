@@ -48,7 +48,7 @@ class TestData:
 #------------------------------------------------------------------------------#
     def _check_profiles(self,db_name,db_type,db_name_config=None):
 
-        """Pick a random profile given PLATFORM_NUMBER and N_PROF, check that
+        """Pick a random profile given PLATFORM_NUMBER and CYCLE_NUMBER, check that
         there is no duplicate row and that it sorted by increasing PRES values"""
 
         if db_name_config is None:
@@ -80,11 +80,11 @@ class TestData:
         for pn in platform_numbers:
             ddf_prof = dd.read_parquet(
                 pq_path,
-                columns=["N_PROF"],
+                columns=["CYCLE_NUMBER"],
                 filters=[ ("PLATFORM_NUMBER", "==", pn)]
             )
             profs = (
-                ddf_prof["N_PROF"]
+                ddf_prof["CYCLE_NUMBER"]
                 .drop_duplicates()
                 .compute()
             )
@@ -92,12 +92,12 @@ class TestData:
             # test 10 random profiles
             for p in random.choices(profs.to_list(), k=np.min([10,len(profs.to_list())])):
                 logging.info(f"PLATFORM_NUMBER = {pn}")
-                logging.info(f"N_PROF = {p}")
+                logging.info(f"CYCLE_NUMBER = {p}")
                 df = dd.read_parquet(
                     pq_path,
                     filters=[
                         ("PLATFORM_NUMBER", "==", pn),
-                        ("N_PROF", "==", p)
+                        ("CYCLE_NUMBER", "==", p)
                     ]
                 )
 

@@ -38,7 +38,7 @@ ARGO_PHY:
   outdir_schema: ./schema/
   fname_pq: demo_ARGO-QC_PHY
   add_derived_vars: True
-  overwrite: False
+  overwrite: True
   tmp_path:
 
 ARGO_BGC:
@@ -49,7 +49,7 @@ ARGO_BGC:
   outdir_schema: ./schema/
   fname_pq: demo_ARGO-QC_BGC
   add_derived_vars: True
-  overwrite: False
+  overwrite: True
   tmp_path:
 
 # Argo GDAC
