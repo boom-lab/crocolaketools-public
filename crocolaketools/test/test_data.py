@@ -89,7 +89,7 @@ class TestData:
                 .compute()
             )
 
-            # test 10 random profiles
+            # test (at most) 10 random profiles
             for p in random.choices(profs.to_list(), k=np.min([10,len(profs.to_list())])):
                 logging.info(f"PLATFORM_NUMBER = {pn}")
                 logging.info(f"CYCLE_NUMBER = {p}")
@@ -106,15 +106,18 @@ class TestData:
                     # data for this profile are NaNs
                     continue
 
-                # test that ddf has no duplicates for pressure values
-                df = df[["PRES"]].compute()
+                # test that ddf has no duplicates for (pressure,time,lat,lon) values
+                df = df[["PRES","JULD","LATITUDE","LONGITUDE"]].compute()
+                # for Argo, make it stricter and no duplicates for pressure
+                if db_name == "Argo":
+                    df = df[["PRES"]]
                 logging.info(f"len(df): {len(df)}")
                 logging.info(f"len(df.drop_duplicates): {len(df.drop_duplicates())}")
 
                 assert len(df) == len(df.drop_duplicates())
 
                 # test that ddf is sorted by PRES
-                df_pres = df#.dropna()
+                df_pres = df[["PRES"]]#.dropna()
                 df_pres_shifted = df_pres.shift(-1)
                 for df_p in [df_pres, df_pres_shifted]:
                     df_p = df_p.drop(df_p.index[-1], inplace=True)
@@ -122,8 +125,6 @@ class TestData:
                 condition = (df_pres_shifted >= df_pres).all().all()
                 logging.info(f"condition: {condition}")
                 assert condition
-
-
 
 
 #------------------------------------------------------------------------------#
@@ -363,4 +364,18 @@ class TestData:
             db_type="BGC",
             db_name="Argo",
             db_name_config="ARGO",
+        )
+
+#------------------------------------------------------------------------------#
+    def test_profiles_glodap_phy(self):
+        self._check_profiles(
+            db_type="PHY",
+            db_name="GLODAP",
+        )
+
+#------------------------------------------------------------------------------#
+    def test_profiles_glodap_bgc(self):
+        self._check_profiles(
+            db_type="BGC",
+            db_name="GLODAP",
         )

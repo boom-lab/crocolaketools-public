@@ -256,8 +256,8 @@ class Converter:
 
         ddf = self.sort_rows(ddf)
 
-        print("repartitioning dask dataframe")
-        ddf = ddf.repartition(partition_size="300MB")
+        # print("repartitioning dask dataframe")
+        # ddf = ddf.repartition(partition_size="300MB")
 
         print("save to parquet")
         self.to_parquet(ddf)
@@ -267,11 +267,14 @@ class Converter:
 #------------------------------------------------------------------------------#
 ## Re-order columns
     def reorder_columns(self,ddf):
-        """Re-order columns to have PLATFORM_NUMBER, LATITUDE, LONGITUDE, JULD,
-        DB_NAME first
+        """Re-order columns to have DB_NAME, JULD, LATITUDE, LONGITUDE,
+        PLATFORM_NUMBER, CYCLE_NUMBER first
 
         Argument:
         ddf -- dask dataframe to re-order
+
+        Returns:
+        ddf -- re-ordered dask dataframe
         """
 
         cols = ddf.columns.to_list()
@@ -280,7 +283,8 @@ class Converter:
             "JULD",
             "LATITUDE",
             "LONGITUDE",
-            "PLATFORM_NUMBER"
+            "PLATFORM_NUMBER",
+            "CYCLE_NUMBER"
         ]
         for col in first_cols:
             cols.remove(col)
@@ -547,7 +551,11 @@ class Converter:
 
         self.generate_schema(data.columns.to_list())
 
-        return data.astype(self.schema_pd)
+        data = data.astype(self.schema_pd)
+        if isinstance(data,dd.DataFrame):
+            data = data.persist()
+
+        return data
 
 #------------------------------------------------------------------------------#
 ## Convert parquet schema to pandas
@@ -708,8 +716,9 @@ class Converter:
 #------------------------------------------------------------------------------#
 ## Sort rows
     def sort_rows(self,df):
-        """Sort dataframe's rows hierarchically by PLATFORM_NUMBER, N_PROF, and
-        PRES. This should ensure that profiles are sorted correctly
+        """Sort dataframe's rows hierarchically by PLATFORM_NUMBER,
+        CYCLE_NUMBER, and PRES. This should ensure that profiles are sorted
+        correctly
 
         Arguments:
         df  --  pandas dataframe
@@ -720,7 +729,7 @@ class Converter:
         """
 
         df = df.sort_values(
-            by=["PLATFORM_NUMBER", "N_PROF", "PRES"],
+            by=["PLATFORM_NUMBER", "CYCLE_NUMBER", "PRES"],
             ascending=[True, True, True],
             ignore_index=True
         )
