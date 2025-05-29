@@ -60,7 +60,9 @@ def spray2parquet(spray_path=None, outdir_pqt=None, fname_pq=None, use_config_fi
     print("Temporary files created.")
 
     # Restarting the server forces dask to free the memory
-    client.restart()
+    client.shutdown()
+    client = Client(**config_cluster["SPRAY_GLIDERS"])
+    #client.restart()
 
     print("Converting temporary files to parquet...")
 

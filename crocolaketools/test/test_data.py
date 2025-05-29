@@ -108,23 +108,27 @@ class TestData:
 
                 # test that ddf has no duplicates for (pressure,time,lat,lon) values
                 df = df[["PRES","JULD","LATITUDE","LONGITUDE"]].compute()
-                # for Argo, make it stricter and no duplicates for pressure
-                if db_name == "Argo":
-                    df = df[["PRES"]]
+                # note that Argo's cycle number might have multiple profiles, so
+                # the above still work, but it would not be unique by pressure
+                # (this would be the case if we used N_PROF but CYCLE_NUMBER
+                # seems to be the standard)
                 logging.info(f"len(df): {len(df)}")
                 logging.info(f"len(df.drop_duplicates): {len(df.drop_duplicates())}")
 
                 assert len(df) == len(df.drop_duplicates())
 
-                # test that ddf is sorted by PRES
-                df_pres = df[["PRES"]]#.dropna()
-                df_pres_shifted = df_pres.shift(-1)
-                for df_p in [df_pres, df_pres_shifted]:
-                    df_p = df_p.drop(df_p.index[-1], inplace=True)
+                # the following is not strictly necessary and not respected by
+                # Argo's CYCLE_NUMBER
 
-                condition = (df_pres_shifted >= df_pres).all().all()
-                logging.info(f"condition: {condition}")
-                assert condition
+                # test that ddf is sorted by PRES
+                # df_pres = df[["PRES"]]#.dropna()
+                # df_pres_shifted = df_pres.shift(-1)
+                # for df_p in [df_pres, df_pres_shifted]:
+                #     df_p = df_p.drop(df_p.index[-1], inplace=True)
+
+                # condition = (df_pres_shifted >= df_pres).all().all()
+                # logging.info(f"condition: {condition}")
+                # assert condition
 
 
 #------------------------------------------------------------------------------#

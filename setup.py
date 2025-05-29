@@ -32,8 +32,9 @@ setup(
     include_package_data=True,
     package_data={
         "crocolaketools": [
-            "config/config.yaml"
-            "config/config_cluster.yaml"
+            "config/config.yaml",
+            "config/config_cluster.yaml",
+            "config/generate_crocolake_symlinks.sh",
         ]
     }
 )

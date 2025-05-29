@@ -7,9 +7,10 @@ set -o pipefail
 CONFIG_DIR="../crocolaketools/config"
 yaml_file="${CONFIG_DIR}""/config.yaml"
 argo_variants=(
+  "PHY"
   "BGC"
 )
-#  "PHY"
+
 
 # Loop through each variant of target CrocoLake directories
 for var in "${argo_variants[@]}"; do

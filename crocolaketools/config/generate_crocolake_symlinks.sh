@@ -13,6 +13,16 @@ crocolake_variants=(
   "PHY"
   "BGC"
 )
+# If variants are provided, use those instead
+if [ $# -gt 0 ]; then
+    # Clear default array
+    crocolake_variants=()
+
+    # Add each command-line argument to the array
+    for arg in "$@"; do
+        crocolake_variants+=("$arg")
+    done
+fi
 
 # Loop through each variant of target CrocoLake directories
 for var in "${crocolake_variants[@]}"; do
@@ -41,10 +51,14 @@ for var in "${crocolake_variants[@]}"; do
       outdir_pq=$(realpath "${SCRIPT_DIR}/${outdir_pq}")
       echo "Processing $outdir_pq"
       # skip if it's the crocolake dir or the other db type (bgc/phy)
-      if [ "$outdir_pq" != "$crocolake_out" ]; then
+      if [ "$outdir_pq" != "$crocolake_out" ] && [[ "$outdir_pq" != *"ARGO-GDAC"* ]]; then
         # Create a symbolic link in the CROCOLAKE directory
-        echo "Creating symlink for $outdir_pq in $crocolake_ln"
-        ln -s $outdir_pq $crocolake_ln
+        if [ -d "$outdir_pq" ]; then
+          echo "Creating symlink for $outdir_pq in $crocolake_ln"
+          ln -s $outdir_pq $crocolake_ln
+        else
+          echo "Destination directory $outdir_pq does not exist. Skipping symlink creation. This usually happens if you have not generated this parquet dataset first."
+        fi
       fi
     done
 done

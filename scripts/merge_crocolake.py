@@ -12,6 +12,7 @@ import argparse
 import importlib.resources
 import logging
 import os
+import subprocess
 import yaml
 from datetime import datetime
 
@@ -110,6 +111,14 @@ def main():
         raise ValueError("CrocoLake type must be PHY or BGC.")
 
     if args.config:
+
+        # generage symlinks
+        with importlib.resources.as_file(
+                importlib.resources.files("crocolaketools.config").joinpath("generate_crocolake_symlinks.sh")
+        ) as sh_script:
+            variants = [args.d.upper()]
+            subprocess.run(["bash", str(sh_script)] + variants)
+
         config_file = importlib.resources.files("crocolaketools.config").joinpath("config.yaml")
         config_path = importlib.resources.files("crocolaketools.config")
         config = yaml.safe_load(open(config_file))
