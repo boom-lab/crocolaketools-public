@@ -16,3 +16,4 @@ pytest
 argopy
 h5netcdf
 yq
+tqdm
