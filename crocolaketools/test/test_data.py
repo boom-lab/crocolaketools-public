@@ -117,18 +117,13 @@ class TestData:
 
                 assert len(df) == len(df.drop_duplicates())
 
-                # the following is not strictly necessary and not respected by
-                # Argo's CYCLE_NUMBER
-
                 # test that ddf is sorted by PRES
-                # df_pres = df[["PRES"]]#.dropna()
-                # df_pres_shifted = df_pres.shift(-1)
-                # for df_p in [df_pres, df_pres_shifted]:
-                #     df_p = df_p.drop(df_p.index[-1], inplace=True)
+                def check_sorted(df):
+                    """Check that df is sorted by PRES"""
+                    return df["PRES"].is_monotonic_increasing
+                condition = df.groupby(["JULD","LATITUDE","LONGITUDE"]).apply(check_sorted)
 
-                # condition = (df_pres_shifted >= df_pres).all().all()
-                # logging.info(f"condition: {condition}")
-                # assert condition
+                assert condition.all()
 
 
 #------------------------------------------------------------------------------#
