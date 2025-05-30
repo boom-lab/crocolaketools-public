@@ -18,8 +18,7 @@ from pprint import pprint
 import pyarrow as pa
 import pyarrow.parquet as pq
 import xarray as xr
-# import crocolakeloader.params as params
-from crocolaketools.utils import params
+import crocolakeloader.params as params
 ##########################################################################
 
 class generateSchema():

@@ -46,7 +46,7 @@ class TestData:
         params_in_crocolake = [k for k, v in params_db2crocolake.items()
                                if v != "PLATFORM_NUMBER"]
 
-        params_crocolake2db = {v: k for k, v in params_db2crocolake.items()}
+        params_crocolake2db = params.params[ "CROCOLAKE2" + db_name]
         lat_name = params_crocolake2db["LATITUDE"]
         lon_name = params_crocolake2db["LONGITUDE"]
 
@@ -56,7 +56,7 @@ class TestData:
             if config["db"]=="ARGO":
                 ds = xr.open_dataset(nc_file, engine="argo")
             else:
-                ds = xr.open_dataset(nc_file, engine="scipy")
+                ds = xr.open_dataset(nc_file, engine="h5netcdf")
 
             #only test variables that are preserved in crocolake
             ds_vars = list(ds.data_vars)
@@ -97,10 +97,7 @@ class TestData:
             cols_pq = [var_pq]
             indices_pq = {}
             for k, v in indices.items():
-                if k in params_db2crocolake:
-                    indices_pq[params_db2crocolake[k]] = ds[k][v].item()
-                else:
-                    logging.warning(f"Dimension '{k}' not found in params_db2crocolake — skipping.")
+                indices_pq[ params_db2crocolake[k] ] = ds[k][v].item()
             indices_pq[ "LATITUDE" ] = nc_lat
             indices_pq[ "LONGITUDE" ] = nc_lon
             cols_pq.extend(indices_pq.keys())
@@ -121,7 +118,10 @@ class TestData:
                                 # discarded)
 
             if ddf.shape[0] == 0:
-                logging.warning("No matching row found in Parquet for selected indices. Skipping this case.")
+                # if the original data ended in a row with all observations as
+                # pd.NAs the row was dropped as it did not contain relevant info
+                logging.info("pq_value was pd.NA and discarded")
+                assert pd.isna(nc_value)
                 continue
 
             # otherwise ddf has at most one row
@@ -134,23 +134,12 @@ class TestData:
                 # check that also original source is NaN or pd.NA
                 assert pd.isna(nc_value)
 
-            elif np.isscalar(pq_value) or isinstance(pq_value, pd.Timestamp):
-                if isinstance(pq_value, pd.Timestamp):
-                    # Normalize nc_value to timestamp if it's a raw nanosecond int or datetime64
-                    if isinstance(nc_value, (int, np.integer)):
-                        nc_value = pd.to_datetime(nc_value)
-                    elif isinstance(nc_value, np.datetime64):
-                        nc_value = pd.Timestamp(nc_value)
-                    assert pq_value == nc_value, f"Timestamp mismatch: pq: {pq_value}, nc: {nc_value}"
-                elif isinstance(pq_value, (float, int, np.floating, np.integer)):
-                    # Float comparison (e.g. temperature, lat/lon)
-                    assert np.isclose(pq_value, nc_value, rtol=1e-5, atol=1e-8), f"pq: {pq_value}, nc: {nc_value}"
-                else:
-                    # Catch-all equality for other scalar types (e.g. strings, ints)
-                    assert pq_value == nc_value, f"Mismatch: pq: {pq_value}, nc: {nc_value}"
+            elif np.isscalar(pq_value):
+                # CrocoLake measured variables are float32, but original dataset
+                # might have float64 precision
+                assert pq_value == np.float32(nc_value)
 
             else:
-                logging.error(f"Unexpected pq_value type: {type(pq_value)}, value: {pq_value}")
                 assert False, "value in CrocoLake is not a scalar nor a pd.NA"
 
 
@@ -167,18 +156,4 @@ class TestData:
         self._check_variables(
             db_type="BGC",
             db_name="SprayGliders"
-        )
-
-#------------------------------------------------------------------------------#
-    def test_data_integrity_saildrones_phy(self):
-        self._check_variables(
-            db_type="PHY",
-            db_name="Saildrones"
-        )
-
-#------------------------------------------------------------------------------#
-    def test_data_integrity_saildrones_bgc(self):
-        self._check_variables(
-            db_type="BGC",
-            db_name="Saildrones"
         )

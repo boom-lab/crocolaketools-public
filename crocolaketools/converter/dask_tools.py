@@ -23,8 +23,7 @@ warnings.simplefilter(action="ignore", category=pd.errors.PerformanceWarning)
 #warnings.simplefilter(action="error", category=RuntimeWarning)
 from pprint import pprint
 from dask.distributed import print
-# import crocolakeloader.params as params
-from crocolaketools.utils import params
+import crocolakeloader.params as params
 ##########################################################################
 
 class daskTools():
