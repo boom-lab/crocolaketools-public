@@ -17,3 +17,4 @@ argopy
 h5netcdf
 yq
 pyyaml
+tqdm

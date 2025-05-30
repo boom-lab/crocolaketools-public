@@ -110,3 +110,7 @@ SprayGliders_BGC:
   add_derived_vars: True
   overwrite: False
   tmp_path: ../demo/demo_tmp_SPRAY_BGC/
+
+# Default relative path for demo data download
+demo:
+  download_path: ../demo/
