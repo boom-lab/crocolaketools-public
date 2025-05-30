@@ -12,7 +12,8 @@ import os
 import warnings
 import logging
 import pandas as pd
-from crocolakeloader import params
+# from crocolakeloader import params
+from crocolaketools.utils import params
 from crocolaketools.converter.converter import Converter
 ##########################################################################
 

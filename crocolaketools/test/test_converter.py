@@ -25,6 +25,7 @@ import xarray as xr
 
 from crocolaketools.converter.converterSprayGliders import ConverterSprayGliders
 from crocolaketools.converter.converterArgoQC import ConverterArgoQC
+from crocolaketools.converter.converterGLODAP import ConverterGLODAP
 from crocolaketools.converter.converterCPR import ConverterCPR
 from crocolaketools.converter.converterSaildrones import ConverterSaildrones
 from crocolakeloader import params
@@ -1088,6 +1089,7 @@ class TestConverter:
         assert "LONGITUDE" in df.columns
         assert "JULD" in df.columns
 
+
     def test_converter_saildrones_read_to_df(self):
         """
         Test that the Saildrone NetCDF file is correctly read into a pandas DataFrame.
@@ -1212,3 +1214,61 @@ class TestConverter:
         assert "BBP700_QC" in df.columns
         assert "CHLA_QC" in df.columns
         assert "CDOM_QC" in df.columns
+
+    def test_converter_wrap_longitude(self):
+        import numpy as np
+
+        for j in range(2):
+            if j==0:
+                lon_list = [-70.00, 70.00, -181.10,  181.10, 0.,  180]
+                solution = [-70.00, 70.00,  178.90, -178.90, 0., -180]
+            else:
+                lon_list = [359,  360]
+                solution = [179, -180]
+            data = {
+                'LATITUDE': list(np.random.rand(len(lon_list))*180-90),
+                'LONGITUDE': lon_list,
+                'PSAL': list(np.random.rand(len(lon_list))+1),
+                'PRES': list(np.random.rand(len(lon_list))*1000),
+                'TEMP': list(np.random.rand(len(lon_list))*5+15),
+            }
+            pdf = pd.DataFrame(data)
+            ddf = dd.from_pandas(pdf, npartitions=2)
+            print("input data:")
+            print(pdf)
+
+            sol_df = pdf.copy()
+            sol_df["LONGITUDE"] = solution
+
+            # we need an instance of ConverterGLODAP to access the _wrap_longitude
+            # method
+            config = {
+                'db': 'GLODAP',
+                'db_type': 'PHY',
+                'input_path': "./",
+                'outdir_pq': "./",
+                'outdir_schema': "./",
+                'fname_pq': "test",
+                'add_derived_vars': True,
+                'overwrite': False,
+            }
+            ConverterPHY = ConverterGLODAP(config)
+
+            if j==0:
+                pdf = ConverterPHY._wrap_longitude(pdf)
+                ddf = ConverterPHY._wrap_longitude(ddf).compute()
+            else:
+                pdf = ConverterPHY._wrap_longitude(
+                    pdf,
+                    shift_range=True,
+                )
+                ddf = ConverterPHY._wrap_longitude(ddf,shift_range=True).compute()
+
+            print("solution:")
+            print(sol_df)
+            print("pdf[LONGITUDE]:")
+            print(pdf["LONGITUDE"])
+            print("ddf[LONGITUDE]:")
+            print(ddf["LONGITUDE"])
+            pd.testing.assert_frame_equal(pdf, sol_df)
+            pd.testing.assert_frame_equal(ddf, sol_df)

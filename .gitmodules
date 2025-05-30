@@ -1,3 +1,3 @@
 [submodule "crocolakeloader"]
 	path = crocolakeloader
-	url = git@github.com:boom-lab/crocolakeloader.git
+	url = https://github.com/boom-lab/crocolakeloader.git
