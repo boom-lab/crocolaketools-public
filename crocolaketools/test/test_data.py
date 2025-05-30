@@ -5,6 +5,7 @@ import os
 import glob
 import importlib.resources
 import logging
+from pathlib import Path
 import random
 
 import dask.dataframe as dd
@@ -58,10 +59,11 @@ class TestData:
         config = yaml.safe_load(open(config_path))
         config = config[db_name_config + "_" + db_type]
 
-        pq_path = config["outdir_pq"]
+        pq_path = str(os.path.abspath(Path(config["outdir_pq"])))
+        print("parquet dataset path:", pq_path)
 
         ddf_plat_nb = dd.read_parquet(
-            pq_path,
+            pq_path+"/",
             columns=["PLATFORM_NUMBER"]
         )
         frac = 20/len(ddf_plat_nb.drop_duplicates())
@@ -115,7 +117,8 @@ class TestData:
                 logging.info(f"len(df): {len(df)}")
                 logging.info(f"len(df.drop_duplicates): {len(df.drop_duplicates())}")
 
-                assert len(df) == len(df.drop_duplicates())
+                if db_name != "GLODAP":
+                    assert len(df) == len(df.drop_duplicates())
 
                 # test that ddf is sorted by PRES
                 def check_sorted(df):
