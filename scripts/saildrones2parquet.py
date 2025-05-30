@@ -18,6 +18,8 @@ import pandas as pd
 simplefilter(action="ignore", category=pd.errors.PerformanceWarning)
 from crocolaketools.converter.converterSaildrones import ConverterSaildrones
 
+from dask.distributed import Client
+
 import functools
 print = functools.partial(print, flush=True)
 ##########################################################################
@@ -114,13 +116,21 @@ def main():
     if args.i and not os.path.isdir(args.i):
         raise ValueError(f"Input path '{args.i}' is not a valid directory.")
 
-    saildrones2parquet(
-        saildrones_path=args.i,
-        outdir_pqt_phy=args.phy,
-        outdir_pqt_bgc=args.bgc,
-        fname_pq=args.f,
-        use_config_file=args.config
-    )
+    # Start Dask distributed client to enable locks and concurrency
+    client = Client()
+    print("Dask distributed client started:", client)
+
+    try:
+        saildrones2parquet(
+            saildrones_path=args.i,
+            outdir_pqt_phy=args.phy,
+            outdir_pqt_bgc=args.bgc,
+            fname_pq=args.f,
+            use_config_file=args.config
+        )
+    finally:
+        client.close()
+        print("Dask client closed.")
 
 ##########################################################################
 if __name__ == "__main__":
