@@ -7,8 +7,8 @@
 # Argo
 ARGO-QC_PHY:
     threads_per_worker: 1
-    n_workers: 18
-    memory_limit: 'auto'
+    n_workers: 4
+    memory_limit: '2GB'
     processes: True
 
 ARGO-QC_BGC:
