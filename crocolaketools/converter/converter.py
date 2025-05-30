@@ -544,9 +544,83 @@ class Converter:
         data["DB_NAME"] = self.db
         data["DB_NAME"] = data["DB_NAME"].astype("string[pyarrow]")
 
+        # wrap LONGITUDE in -180,+180 range
+        data = self._wrap_longitude(data)
+
         self.generate_schema(data.columns.to_list())
 
         return data.astype(self.schema_pd)
+
+#------------------------------------------------------------------------------#
+## wrap LONGITUDE in -180,+180 range
+    def _wrap_longitude(self,df, shift_range=False, shift_value=None, ignore_range=False):
+        """Enforce uniformity for longitude measurements to be in [-180,180) range
+
+        Arguments:
+        df -- pandas or dask dataframe
+
+        Returns:
+        df -- pandas or dask dataframe with longitude column in the range
+              [-180, 180)
+        """
+
+        if isinstance(df,pd.DataFrame):
+            ddf = dd.from_pandas(df, npartitions=1)
+            flag_pd = True
+            flag_dd = False
+        elif isinstance(df,dd.DataFrame):
+            ddf = df
+            flag_pd = False
+            flag_dd = True
+        else:
+            raise TypeError(
+                "df is not a pandas or dask dataframe, I cannot"
+                "wrap longitude values"
+            )
+
+        # if LONGITUDE is in [0,360) range, it is shifted to [-180,180) range if
+        # flag is passed
+        if (
+                ddf["LONGITUDE"].min().compute() >= 0
+                and ddf["LONGITUDE"].max().compute() >= 180
+                and ddf["LONGITUDE"].max().compute() <= 360
+        ):
+            # it might be that this dataset uses LONGITUDE in [0,360) range
+            # instead of [-180,180). The converter expects the latter range by
+            # default, so the user should be warned
+            if shift_range is False:
+                if ignore_range is False:
+                    raise ValueError(
+                        "LONGITUDE values are in [0,360) range, while the"
+                        "converter expects them in [-180,180) range. Either "
+                        "convert LONGITUDE values to [-180,180) range with "
+                        "the argument shift_range=True, or ignore at your "
+                        "own risk with ignore_range=True."
+                    )
+            else:
+                if shift_value is None:
+                    shift_value = -180
+                ddf["LONGITUDE"] = ddf["LONGITUDE"] + shift_value
+
+        # note that the following only works if the wrapped LONGITUDE must be in [-180,180) range
+        def modulo_longitude(df):
+            # this turns 180 into -180
+            df["LONGITUDE"] = (df["LONGITUDE"] - 180) % 360 - 180
+            return df
+
+        ddf = ddf.map_partitions(
+                modulo_longitude,
+                meta=ddf
+        )
+
+        if flag_pd:
+            df = ddf.compute()
+        elif flag_dd:
+            df = ddf
+        else:
+            raise TypeError("input dataframe is not a pandas or dask dataframe.")
+
+        return df
 
 #------------------------------------------------------------------------------#
 ## Convert parquet schema to pandas
