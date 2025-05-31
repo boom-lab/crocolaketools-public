@@ -16,9 +16,10 @@ from warnings import simplefilter
 import pandas as pd
 # Ignore pandas performance warnings
 simplefilter(action="ignore", category=pd.errors.PerformanceWarning)
+import yaml
+import importlib.resources
+from dask.distributed import Client, Lock
 from crocolaketools.converter.converterSaildrones import ConverterSaildrones
-
-from dask.distributed import Client
 
 import functools
 print = functools.partial(print, flush=True)
@@ -26,6 +27,11 @@ print = functools.partial(print, flush=True)
 
 def saildrones2parquet(saildrones_path=None, outdir_pqt_phy=None, outdir_pqt_bgc=None, fname_pq=None, use_config_file=False):
     """Convert Saildrone NetCDF files to Parquet format"""
+
+    # Initialize Dask client
+    config_path = importlib.resources.files("crocolaketools.config").joinpath("config_cluster.yaml")
+    config_cluster = yaml.safe_load(open(config_path))
+    client = Client(**config_cluster["SAILDRONES"])  # Assuming you have SAILDRONES config in your yaml
 
     if not use_config_file:
         print("Using user-defined configuration")
@@ -37,7 +43,7 @@ def saildrones2parquet(saildrones_path=None, outdir_pqt_phy=None, outdir_pqt_bgc
             'outdir_schema': './schemas/Saildrones/',
             'fname_pq': fname_pq,
             'add_derived_vars': True,
-            'overwrite': False,
+            'overwrite': True,
         }
         converter_phy = ConverterSaildrones(config_phy)
 
@@ -53,7 +59,10 @@ def saildrones2parquet(saildrones_path=None, outdir_pqt_phy=None, outdir_pqt_bgc
             print(f"  - {f}")
 
         print("Converting PHY files to parquet...")
-        converter_phy.convert(saildrones_names)
+        # Create a lock for thread-safe file reading
+        lock = Lock()
+        ddf_phy = converter_phy.read_to_ddf(saildrones_names, lock=lock)
+        converter_phy.convert(ddf_phy)
         print("PHY files converted to parquet.")
         del converter_phy
     else:
@@ -63,6 +72,9 @@ def saildrones2parquet(saildrones_path=None, outdir_pqt_phy=None, outdir_pqt_bgc
         converter_phy.convert()
         print("PHY files converted to parquet.")
         del converter_phy
+
+    # Restart client to free memory
+    client.restart()
 
     if not use_config_file:
         print("Using user-defined configuration")
@@ -74,7 +86,7 @@ def saildrones2parquet(saildrones_path=None, outdir_pqt_phy=None, outdir_pqt_bgc
             'outdir_schema': './schemas/Saildrones/',
             'fname_pq': fname_pq,
             'add_derived_vars': True,
-            'overwrite': False,
+            'overwrite': True,
         }
         converter_bgc = ConverterSaildrones(config_bgc)
 
@@ -87,7 +99,9 @@ def saildrones2parquet(saildrones_path=None, outdir_pqt_phy=None, outdir_pqt_bgc
             print(f"  - {f}")
 
         print("Converting BGC files to parquet...")
-        converter_bgc.convert(saildrones_names)
+        lock = Lock()  # Create a new lock for BGC processing
+        ddf_bgc = converter_bgc.read_to_ddf(saildrones_names, lock=lock)
+        converter_bgc.convert(ddf_bgc)
         print("BGC files converted to parquet.")
         del converter_bgc
     else:
@@ -98,6 +112,7 @@ def saildrones2parquet(saildrones_path=None, outdir_pqt_phy=None, outdir_pqt_bgc
         print("BGC files converted to parquet.")
         del converter_bgc
 
+    client.shutdown()
     return
 
 ##########################################################################
@@ -116,21 +131,13 @@ def main():
     if args.i and not os.path.isdir(args.i):
         raise ValueError(f"Input path '{args.i}' is not a valid directory.")
 
-    # Start Dask distributed client to enable locks and concurrency
-    client = Client()
-    print("Dask distributed client started:", client)
-
-    try:
-        saildrones2parquet(
-            saildrones_path=args.i,
-            outdir_pqt_phy=args.phy,
-            outdir_pqt_bgc=args.bgc,
-            fname_pq=args.f,
-            use_config_file=args.config
-        )
-    finally:
-        client.close()
-        print("Dask client closed.")
+    saildrones2parquet(
+        saildrones_path=args.i,
+        outdir_pqt_phy=args.phy,
+        outdir_pqt_bgc=args.bgc,
+        fname_pq=args.f,
+        use_config_file=args.config
+    )
 
 ##########################################################################
 if __name__ == "__main__":
