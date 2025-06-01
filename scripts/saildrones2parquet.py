@@ -5,19 +5,21 @@
 # Script to convert Saildrone NetCDF files to CROCOLAKE-compliant Parquet format
 #
 ## @author David Nady <davidnady4yad@gmail.com>
-## @date Mon 19 May 2025
+## @date Sat 18 Apr 2025
 
 ##########################################################################
 import argparse
 import os
-import glob
-from datetime import datetime
-from warnings import simplefilter
-import pandas as pd
-# Ignore pandas performance warnings
-simplefilter(action="ignore", category=pd.errors.PerformanceWarning)
-import yaml
 import importlib.resources
+import yaml
+from warnings import simplefilter
+from datetime import datetime
+
+import argparse
+import glob
+import pandas as pd
+# ignore pandas "educational" performance warnings
+simplefilter(action="ignore", category=pd.errors.PerformanceWarning)
 from dask.distributed import Client, Lock
 from crocolaketools.converter.converterSaildrones import ConverterSaildrones
 
@@ -25,119 +27,79 @@ import functools
 print = functools.partial(print, flush=True)
 ##########################################################################
 
-def saildrones2parquet(saildrones_path=None, outdir_pqt_phy=None, outdir_pqt_bgc=None, fname_pq=None, use_config_file=False):
-    """Convert Saildrone NetCDF files to Parquet format"""
+def saildrones2parquet(saildrones_path=None, outdir_pqt=None, fname_pq=None, use_config_file=None):
 
-    # Initialize Dask client
     config_path = importlib.resources.files("crocolaketools.config").joinpath("config_cluster.yaml")
     config_cluster = yaml.safe_load(open(config_path))
-    client = Client(**config_cluster["SAILDRONES"])  # Assuming you have SAILDRONES config in your yaml
+    client = Client(**config_cluster["SAILDRONES"])
 
     if not use_config_file:
         print("Using user-defined configuration")
-        config_phy = {
+        config = {
             'db': 'Saildrones',
             'db_type': 'PHY',
             'input_path': saildrones_path,
-            'outdir_pq': outdir_pqt_phy,
+            'outdir_pq': outdir_pqt,
             'outdir_schema': './schemas/Saildrones/',
             'fname_pq': fname_pq,
             'add_derived_vars': True,
-            'overwrite': True,
+            'overwrite': False,
+            'tmp_path': './tmp_saildrones/',
         }
-        converter_phy = ConverterSaildrones(config_phy)
+        ConverterPHY = ConverterSaildrones(config)
 
-        # Get list of NetCDF files
-        saildrones_files = glob.glob(os.path.join(saildrones_path, '*.nc'))
-        saildrones_names = [os.path.basename(f) for f in saildrones_files]
-
-        if not saildrones_names:
-            raise ValueError(f"No NetCDF files found in '{saildrones_path}'.")
-
-        print("Saildrone files to process:")
-        for f in saildrones_names:
-            print(f"  - {f}")
-
-        print("Converting PHY files to parquet...")
-        # Create a lock for thread-safe file reading
-        lock = Lock()
-        ddf_phy = converter_phy.read_to_ddf(saildrones_names, lock=lock)
-        converter_phy.convert(ddf_phy)
-        print("PHY files converted to parquet.")
-        del converter_phy
-    else:
+    else: # reads from file
         print("Using configuration from config.yaml")
-        converter_phy = ConverterSaildrones(db_type='phy')
-        print("Converting PHY files to parquet...")
-        converter_phy.convert()
-        print("PHY files converted to parquet.")
-        del converter_phy
+        ConverterPHY = ConverterSaildrones(db_type='phy')
 
-    # Restart client to free memory
+    print("Converting PHY files to parquet...")
+    ConverterPHY.convert()
+
+    print("PHY files converted to parquet.")
+
+    # Restarting the server forces dask to free the memory
     client.restart()
+
+    print("Working on BGC files...")
 
     if not use_config_file:
         print("Using user-defined configuration")
-        config_bgc = {
+        config = {
             'db': 'Saildrones',
             'db_type': 'BGC',
             'input_path': saildrones_path,
-            'outdir_pq': outdir_pqt_bgc,
+            'outdir_pq': outdir_pqt,
             'outdir_schema': './schemas/Saildrones/',
             'fname_pq': fname_pq,
             'add_derived_vars': True,
-            'overwrite': True,
+            'overwrite': False,
+            'tmp_path': './tmp_saildrones/',
         }
-        converter_bgc = ConverterSaildrones(config_bgc)
+        ConverterBGC = ConverterSaildrones(config)
 
-        # Reuse list of NetCDF files
-        saildrones_files = glob.glob(os.path.join(saildrones_path, '*.nc'))
-        saildrones_names = [os.path.basename(f) for f in saildrones_files]
-
-        print("Saildrone files to process:")
-        for f in saildrones_names:
-            print(f"  - {f}")
-
-        print("Converting BGC files to parquet...")
-        lock = Lock()  # Create a new lock for BGC processing
-        ddf_bgc = converter_bgc.read_to_ddf(saildrones_names, lock=lock)
-        converter_bgc.convert(ddf_bgc)
-        print("BGC files converted to parquet.")
-        del converter_bgc
-    else:
+    else: # reads from file
         print("Using configuration from config.yaml")
-        converter_bgc = ConverterSaildrones(db_type='bgc')
-        print("Converting BGC files to parquet...")
-        converter_bgc.convert()
-        print("BGC files converted to parquet.")
-        del converter_bgc
+        ConverterBGC = ConverterSaildrones(db_type='bgc')
+
+    print("Converting BGC files to parquet...")
+    ConverterBGC.convert()
+    print("BGC files converted to parquet.")
 
     client.shutdown()
+
     return
 
 ##########################################################################
 def main():
-    parser = argparse.ArgumentParser(description='Convert Saildrone NetCDF files to Parquet format')
-    parser.add_argument('-i', help='Path to Saildrone NetCDF files (if not using config.yaml)', required=False, default=None)
-    parser.add_argument('--phy', help='Destination path for physical-variables database', required=False, default=None)
-    parser.add_argument('--bgc', help='Destination path for bgc-variables database', required=False, default=None)
-    parser.add_argument('-f', help='Basename for output files', required=False, default='1300_SAILDRONES.parquet')
-    parser.add_argument('--config', help='Use config file instead of command-line arguments', action='store_true')
-    # When --config is provided, uses config.yaml; otherwise, uses command-line arguments
+    parser = argparse.ArgumentParser(description='Script to convert Saildrones database to parquet')
+    parser.add_argument('-i', help="Path to Saildrones data", required=False)
+    parser.add_argument('-o', help="Destination path for parquet format database", required=False)
+    parser.add_argument("-f", help="Basename for output files", required=False, default="demo_SAILDRONES.parquet")
+    parser.add_argument('--config', action='store_true', help="Use config files instead of parsing arguments", required=False, default=None)
 
     args = parser.parse_args()
 
-    # Validate input path if provided
-    if args.i and not os.path.isdir(args.i):
-        raise ValueError(f"Input path '{args.i}' is not a valid directory.")
-
-    saildrones2parquet(
-        saildrones_path=args.i,
-        outdir_pqt_phy=args.phy,
-        outdir_pqt_bgc=args.bgc,
-        fname_pq=args.f,
-        use_config_file=args.config
-    )
+    saildrones2parquet(args.i,args.o,args.f,args.config)
 
 ##########################################################################
 if __name__ == "__main__":

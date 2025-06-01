@@ -12,15 +12,15 @@
 ##########################################################################
 import os
 import warnings
+import dask
+import dask.dataframe as dd
+from dask.distributed import Lock
 import gsw
 import numpy as np
 import pandas as pd
 from pandas import ArrowDtype
 import pyarrow as pa
 import xarray as xr
-import dask
-import dask.dataframe as dd
-from dask.distributed import Lock
 from crocolakeloader import params
 from crocolaketools.converter.converter import Converter
 ##########################################################################
@@ -43,52 +43,96 @@ class ConverterSaildrones(Converter):
     # Methods                                                            #
     # ------------------------------------------------------------------ #
 
+    def convert(self, filenames=None, filepath=None):
+        """Custom implementation of convert method because ConverterSaildrones read_to_df() 
+        return both the DataFrame and the variables list, while the base Converter class 
+        expects read_to_df() to return just the DataFrame.
+
+        Arguments:
+        filenames -- list of files to process
+        filepath -- path to files to process
+        """
+        if filenames is None:
+            if filepath is None:
+                guess_path = self.input_path
+                warnings.warn("Filename(s) not provided, guessing from input path: " + guess_path)
+            else:
+                guess_path = filepath
+                warnings.warn("Filename(s) not provided, guessing from provided file path: " + guess_path)
+            filenames = os.listdir(guess_path)
+        print("List of files to convert: ", filenames)
+
+        # adapt for single filename input
+        if isinstance(filenames, str):
+            filenames = [filenames]
+
+        lock = Lock()
+        if len(filenames) > 1:
+            print("reading reference files")
+            ddf = self.read_to_ddf(
+                flist=filenames,
+                lock=lock
+            )
+        else:
+            read_result = self.read_to_df(filenames[0], lock)
+            df = self.process_df(read_result[0], read_result[1])
+            ddf = dd.from_delayed([df])
+
+        if self.add_derived_vars:
+            print("adding derived variables")
+            ddf = self.add_derived_variables(ddf)
+
+        ddf = self.reorder_columns(ddf)
+
+        ddf = ddf.drop_duplicates()
+
+        print("repartitioning dask dataframe")
+        ddf = ddf.repartition(partition_size="300MB")
+
+        # Generate schema before saving to parquet
+        if self.call_guess_schema:
+            self.schema_pq = self.guess_schema(ddf)
+        else:
+            self.generate_schema(ddf.columns.to_list())
+
+        print("save to parquet")
+        self.to_parquet(ddf)
+
+        return
+
     def read_to_ddf(self, flist=None, lock=None):
-        """Read list of NetCDF files and generate list of delayed objects with processed data
+        """Read list of NetCDF files and generate list of delayed objects with
+        processed data
 
         Arguments:
         flist -- list of files to process
         lock  -- dask lock to use for concurrency
 
         Returns:
-        ddf -- dask dataframe
+        results -- list of dask dataframes
         """
+
         if lock is None:
             warnings.warn("No lock provided. This might lead to concurrency or segmentation fault errors.")
 
-        if flist is None:
-            flist = os.listdir(self.input_path)
-            print("List of files not provided, guessing from input path: ", self.input_path)
-
-        # If there is only one file, ensure it's treated as a list
-        if isinstance(flist, str):
-            flist = [flist]
-
         results = []
         for fname in flist:
+            if not fname.endswith(".nc"):
+                raise ValueError(f"{fname} does not end with '.nc'.")
             read_result = self.read_to_df(fname, lock)
             proc_result = self.process_df(read_result[0], read_result[1])
             results.append(proc_result)
 
         ddf = dd.from_delayed(results)
-        ddf = ddf.persist()
+
         self.call_guess_schema = True
 
         return ddf
 
-
     @dask.delayed(nout=2)
     def read_to_df(self, filename=None, lock=None):
-        """Read a Saildrone NetCDF file into a standardized pandas DataFrame.
+        """Read a Saildrone NetCDF file into a standardized pandas DataFrame."""
 
-        Arguments:
-        filename -- file name to read
-        lock     -- dask lock to use for concurrency
-
-        Returns:
-        df     -- pandas dataframe
-        invars -- list of variables in df
-        """
         if filename is None:
             raise ValueError("No filename provided for Saildrone database.")
 
@@ -99,7 +143,7 @@ class ConverterSaildrones(Converter):
             lock.acquire(timeout=600)
 
         try:
-            ds = xr.open_dataset(input_fname, engine="netcdf4")
+            ds = xr.open_dataset(input_fname, engine="netcdf4", cache=False)
             invars = list(set(params.params["Saildrones"]) & set(ds.data_vars))
             df = ds[invars].to_dataframe().reset_index()
 
@@ -121,6 +165,10 @@ class ConverterSaildrones(Converter):
                     df.loc[df[var_name].notna(), "depth"] = assigned_depth
                     print(f"Assigned depth {assigned_depth}m to {count} records from variable '{var_name}'")
 
+        except Exception as e:
+            print(f"Error reading file {input_fname}: {e}")
+            raise
+
         finally:
             if lock is not None:
                 lock.release()
@@ -136,24 +184,18 @@ class ConverterSaildrones(Converter):
         invars -- list of variables in df
 
         Returns:
-        df -- processed pandas dataframe
+        df    -- pandas dataframe with standardized schema
         """
-        # Only keep variables in invars
-        if "depth" not in invars:
-            invars.append("depth")
 
-        cols_to_drop = [item for item in df.columns.to_list() if item not in invars]
-        df = df.drop(columns=cols_to_drop)
-
-        # Standardize the data
+        # make df consistent with CrocoLake schema
         df = self.standardize_data(df)
 
-        # Remove rows that are all NAs
-        cols_to_check = ["TEMP", "PSAL"]
+        # remove rows that are all NAs
+        cols_to_check = ["TEMP", "PSAL", "PRES"]
         if self.db_type == "BGC":
             cols_to_check += ["DOXY", "CHLA", "CDOM", "BBP700"]
         cols_to_check = [col for col in cols_to_check if col in df.columns]
-        
+
         df = super().remove_all_NAs(df, cols_to_check)
 
         return df

@@ -25,7 +25,7 @@ SPRAY_GLIDERS:
 
 # Saildrones configuration
 SAILDRONES:
-    threads_per_worker: 4
-    n_workers: 4
-    memory_limit: '8GB'  # per worker
+    threads_per_worker: 8
+    n_workers: 2
+    memory_limit: '32GB'
     processes: True
