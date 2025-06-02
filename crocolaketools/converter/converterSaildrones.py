@@ -177,6 +177,72 @@ class ConverterSaildrones(Converter):
 
         return df
 
+    def convert_single_file(self, filename, lock=None):
+        """Handle conversion of a single file to dask dataframe
+        
+        Arguments:
+        filename -- name of the file to convert
+        lock -- dask lock to use for concurrency
+        
+        Returns:
+        ddf -- dask dataframe containing the converted data
+        """
+        df, invars = self.read_to_df(filename, lock)
+        # Compute the delayed result since process_df is a delayed function
+        df = dask.compute(self.process_df(df, invars))[0]
+        
+        # Generate schema before converting to dask dataframe
+        self.generate_schema(df.columns.to_list())
+        
+        ddf = dd.from_pandas(df, npartitions=1)
+        return ddf
+
+    def convert(self, filenames=None, filepath=None):
+        """Convert filename to parquet. This executes all the steps needed from
+        reading to converting to storing, and might not work for non-simple
+        workflows. You can still refer to it to build your own workflow.
+        """
+        if filenames is None:
+            if filepath is None:
+                guess_path = self.input_path
+                warnings.warn("Filename(s) not provided, guessing from input path: " + guess_path)
+            else:
+                guess_path = filepath
+                warnings.warn("Filename(s) not provided, guessing from provided file path: " + guess_path)
+            filenames = os.listdir(guess_path)
+        print("List of files to convert: ", filenames)
+
+        # adapt for single filename input
+        if isinstance(filenames, str):
+            filenames = [filenames]
+
+        lock = Lock()
+        if len(filenames) > 1:
+            print("reading reference files")
+            ddf = self.read_to_ddf(
+                flist=filenames,
+                lock=lock
+            )
+        else:
+            print("reading single file")
+            ddf = self.convert_single_file(filenames[0], lock)
+
+        if self.add_derived_vars:
+            print("adding derived variables")
+            ddf = self.add_derived_variables(ddf)
+
+        ddf = self.reorder_columns(ddf)
+
+        ddf = ddf.drop_duplicates()
+
+        print("repartitioning dask dataframe")
+        ddf = ddf.repartition(partition_size="300MB")
+
+        print("save to parquet")
+        self.to_parquet(ddf)
+
+        return
+
 ##########################################################################
 if __name__ == "__main__":
     ConverterSaildrones()
