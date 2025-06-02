@@ -15,7 +15,6 @@ import yaml
 from warnings import simplefilter
 from datetime import datetime
 
-import argparse
 import glob
 import pandas as pd
 # ignore pandas "educational" performance warnings
@@ -52,15 +51,26 @@ def saildrones2parquet(saildrones_path=None, outdir_pqt=None, fname_pq=None, use
         print("Using configuration from config.yaml")
         ConverterPHY = ConverterSaildrones(db_type='phy')
 
-    print("Converting PHY files to parquet...")
-    ConverterPHY.convert()
+    print("Prepared PHY files...")
+    ConverterPHY.prepare_data(
+        lock=Lock()
+    )
 
-    print("PHY files converted to parquet.")
+    print("PHY files Prepared.")
 
     # Restarting the server forces dask to free the memory
     client.restart()
 
+    print("Converting PHY files to parquet...")
+    ConverterPHY.convert()
+    print("PHY files converted to parquet.")
+    del ConverterPHY
+    print("done.")
+
     print("Working on BGC files...")
+
+    # Restarting the server forces dask to free the memory
+    client.restart()
 
     if not use_config_file:
         print("Using user-defined configuration")
@@ -81,9 +91,18 @@ def saildrones2parquet(saildrones_path=None, outdir_pqt=None, fname_pq=None, use
         print("Using configuration from config.yaml")
         ConverterBGC = ConverterSaildrones(db_type='bgc')
 
+    print("Prepared BGC files...")
+    ConverterBGC.prepare_data(
+        lock=Lock()
+    )
+
+    print("BGC files Prepared.")
+
     print("Converting BGC files to parquet...")
     ConverterBGC.convert()
     print("BGC files converted to parquet.")
+    del ConverterBGC
+    print("done.")
 
     client.shutdown()
 

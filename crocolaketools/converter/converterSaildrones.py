@@ -43,60 +43,45 @@ class ConverterSaildrones(Converter):
     # Methods                                                            #
     # ------------------------------------------------------------------ #
 
-    def convert(self, filenames=None, filepath=None):
-        """Custom implementation of convert method because ConverterSaildrones read_to_df() 
-        return both the DataFrame and the variables list, while the base Converter class 
-        expects read_to_df() to return just the DataFrame.
+    def prepare_data(self, flist=None, lock=None):
+        """Validate list of NetCDF files for processing.
+        Unlike SprayGliders, we don't need to chunk the files since Saildrones data is smaller.
 
         Arguments:
-        filenames -- list of files to process
-        filepath -- path to files to process
+        flist -- list of files to process
+        lock  -- dask lock to use for concurrency
         """
-        if filenames is None:
-            if filepath is None:
-                guess_path = self.input_path
-                warnings.warn("Filename(s) not provided, guessing from input path: " + guess_path)
-            else:
-                guess_path = filepath
-                warnings.warn("Filename(s) not provided, guessing from provided file path: " + guess_path)
-            filenames = os.listdir(guess_path)
-        print("List of files to convert: ", filenames)
+        if lock is None:
+            warnings.warn("No lock provided. This might lead to concurrency or segmentation fault errors.")
 
-        # adapt for single filename input
-        if isinstance(filenames, str):
-            filenames = [filenames]
+        if flist is None:
+            flist = os.listdir(self.input_path)
+            print("List of files not provided, guessing from input path: ", self.input_path)
 
-        lock = Lock()
-        if len(filenames) > 1:
-            print("reading reference files")
-            ddf = self.read_to_ddf(
-                flist=filenames,
-                lock=lock
-            )
-        else:
-            read_result = self.read_to_df(filenames[0], lock)
-            df = self.process_df(read_result[0], read_result[1])
-            ddf = dd.from_delayed([df])
+        print("Preparing files: ", flist)
+        for fname in flist:
+            if not fname.endswith(".nc"):
+                raise ValueError(f"{fname} does not end with '.nc'.")
+            
+            input_fname = os.path.join(self.input_path, fname)
+            print("Preparing file: ", input_fname)
 
-        if self.add_derived_vars:
-            print("adding derived variables")
-            ddf = self.add_derived_variables(ddf)
+            if lock is not None:
+                lock.acquire(timeout=600)
 
-        ddf = self.reorder_columns(ddf)
+            try:
+                with xr.open_dataset(input_fname, engine="netcdf4", cache=False) as ds:
+                    invars = list(set(params.params["Saildrones"]) & set(ds.data_vars))
+                    if not invars:
+                        raise ValueError(f"No required variables found in {fname}")
 
-        ddf = ddf.drop_duplicates()
+            except Exception as e:
+                print(f"Error Preparing file {input_fname}: {e}")
+                raise
 
-        print("repartitioning dask dataframe")
-        ddf = ddf.repartition(partition_size="300MB")
-
-        # Generate schema before saving to parquet
-        if self.call_guess_schema:
-            self.schema_pq = self.guess_schema(ddf)
-        else:
-            self.generate_schema(ddf.columns.to_list())
-
-        print("save to parquet")
-        self.to_parquet(ddf)
+            finally:
+                if lock is not None:
+                    lock.release()
 
         return
 
@@ -123,7 +108,11 @@ class ConverterSaildrones(Converter):
             proc_result = self.process_df(read_result[0], read_result[1])
             results.append(proc_result)
 
+        # combine all results into a single dask dataframe
         ddf = dd.from_delayed(results)
+        
+        # Repartition to optimize for writing to parquet
+        ddf = ddf.repartition(npartitions=1)
 
         self.call_guess_schema = True
 
@@ -187,6 +176,14 @@ class ConverterSaildrones(Converter):
         df    -- pandas dataframe with standardized schema
         """
 
+        df = df.reset_index(drop=False)
+
+        invars = invars + ["depth"]
+
+        # only keep variables in invars
+        cols_to_drop = [item for item in df.columns.to_list() if item not in invars]
+        df = df.drop(columns=cols_to_drop)
+
         # make df consistent with CrocoLake schema
         df = self.standardize_data(df)
 
@@ -224,6 +221,45 @@ class ConverterSaildrones(Converter):
         df = super().add_qc_flags(df, qc_vars, 1)
 
         return df
+
+    def convert(self, filenames=None, filepath=None):
+        """Convert Saildrone NetCDF files to parquet format.
+        This overrides the base Converter's convert method to handle Saildrone-specific conversion.
+
+        Arguments:
+        filenames -- list of files to convert
+        filepath  -- path to files (not used, kept for compatibility)
+        """
+        if filenames is None:
+            filenames = os.listdir(self.input_path)
+            print("List of files not provided, guessing from input path: ", self.input_path)
+        print("List of files to convert: ", filenames)
+
+        # Validate files first
+        self.prepare_data(filenames, Lock())
+
+        # Read and process files
+        ddf = self.read_to_ddf(
+            flist=filenames,
+            lock=Lock()
+        )
+
+        # Add derived variables if needed
+        if self.add_derived_vars:
+            print("adding derived variables")
+            ddf = self.add_derived_variables(ddf)
+
+        # Reorder columns
+        ddf = self.reorder_columns(ddf)
+
+        # Remove duplicates
+        ddf = ddf.drop_duplicates()
+
+        # Save to parquet
+        print("save to parquet")
+        self.to_parquet(ddf)
+
+        return
 
 ##########################################################################
 if __name__ == "__main__":
