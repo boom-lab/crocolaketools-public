@@ -68,9 +68,6 @@ class ConverterSaildrones(Converter):
 
         # combine all results into a single dask dataframe
         ddf = dd.from_delayed(results)
-        
-        # Repartition to optimize for writing to parquet
-        ddf = ddf.repartition(npartitions=1)
 
         self.call_guess_schema = True
 
