@@ -68,6 +68,8 @@ class ConverterSaildrones(Converter):
 
         # combine all results into a single dask dataframe
         ddf = dd.from_delayed(results)
+        
+        self.generate_schema(ddf.columns.to_list())
 
         self.call_guess_schema = True
 
@@ -178,24 +180,27 @@ class ConverterSaildrones(Converter):
         return df
 
     def convert_single_file(self, filename, lock=None):
-        """Handle conversion of a single file to dask dataframe
+        """Handle conversion of a single file to pandas dataframe without using Dask to reduce overheads
         
         Arguments:
         filename -- name of the file to convert
-        lock -- dask lock to use for concurrency
+        lock -- dask lock to use for concurrency (not used in single file mode)
         
         Returns:
-        ddf -- dask dataframe containing the converted data
+        df -- pandas dataframe containing the converted data
         """
         df, invars = self.read_to_df(filename, lock)
-        # Compute the delayed result since process_df is a delayed function
-        df = dask.compute(self.process_df(df, invars))[0]
         
-        # Generate schema before converting to dask dataframe
+        # Compute the delayed result since read_to_df is still a delayed function
+        df, invars = dask.compute(df, invars)
+        
+        # Process the dataframe directly without Dask
+        df = self.process_df(df, invars)
+        df = dask.compute(df)[0]
+        
         self.generate_schema(df.columns.to_list())
         
-        ddf = dd.from_pandas(df, npartitions=1)
-        return ddf
+        return df
 
     def convert(self, filenames=None, filepath=None):
         """Convert filename to parquet. This executes all the steps needed from
@@ -216,30 +221,42 @@ class ConverterSaildrones(Converter):
         if isinstance(filenames, str):
             filenames = [filenames]
 
-        lock = Lock()
         if len(filenames) > 1:
-            print("reading reference files")
+            print("reading multiple files in parallel")
+            lock = Lock()
             ddf = self.read_to_ddf(
                 flist=filenames,
                 lock=lock
             )
+            
+            if self.add_derived_vars:
+                print("adding derived variables")
+                ddf = self.add_derived_variables(ddf)
+
+            ddf = self.reorder_columns(ddf)
+            ddf = ddf.drop_duplicates()
+            print("repartitioning dask dataframe")
+
+            ddf = ddf.repartition(partition_size="100MB")
+            print("save to parquet")
+            self.to_parquet(ddf)
         else:
             print("reading single file")
-            ddf = self.convert_single_file(filenames[0], lock)
-
-        if self.add_derived_vars:
-            print("adding derived variables")
-            ddf = self.add_derived_variables(ddf)
-
-        ddf = self.reorder_columns(ddf)
-
-        ddf = ddf.drop_duplicates()
-
-        print("repartitioning dask dataframe")
-        ddf = ddf.repartition(partition_size="300MB")
-
-        print("save to parquet")
-        self.to_parquet(ddf)
+            df = self.convert_single_file(filenames[0])
+            
+            if self.add_derived_vars:
+                print("adding derived variables")
+                # For single file, compute derived variables directly
+                df = self.compute_derived_variables(df)
+            
+            df = self.reorder_columns(df)
+            df = df.drop_duplicates()
+            
+            print("save to parquet")
+            # Convert to dask DataFrame and use parent class's to_parquet method
+            ddf = dd.from_pandas(df, npartitions=1)
+            ddf = ddf.repartition(partition_size="100MB")
+            self.to_parquet(ddf)
 
         return
 

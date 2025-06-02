@@ -28,9 +28,19 @@ print = functools.partial(print, flush=True)
 
 def saildrones2parquet(saildrones_path=None, outdir_pqt=None, fname_pq=None, use_config_file=None):
 
-    config_path = importlib.resources.files("crocolaketools.config").joinpath("config_cluster.yaml")
-    config_cluster = yaml.safe_load(open(config_path))
-    client = Client(**config_cluster["SAILDRONES"])
+    # Check if we're dealing with a single file
+    is_single_file = False
+    if saildrones_path and os.path.isfile(saildrones_path):
+        is_single_file = True
+    elif saildrones_path and os.path.isdir(saildrones_path):
+        files = [f for f in os.listdir(saildrones_path) if f.endswith('.nc')]
+        is_single_file = len(files) == 1
+
+    # Only initialize Dask client if we're not processing a single file
+    if not is_single_file:
+        config_path = importlib.resources.files("crocolaketools.config").joinpath("config_cluster.yaml")
+        config_cluster = yaml.safe_load(open(config_path))
+        client = Client(**config_cluster["SAILDRONES"])
 
     if not use_config_file:
         print("Using user-defined configuration")
@@ -58,8 +68,8 @@ def saildrones2parquet(saildrones_path=None, outdir_pqt=None, fname_pq=None, use
 
     print("Working on BGC files...")
 
-    # Restarting the server forces dask to free the memory
-    client.restart()
+    if not is_single_file:
+        client.restart()
 
     if not use_config_file:
         print("Using user-defined configuration")
@@ -86,7 +96,8 @@ def saildrones2parquet(saildrones_path=None, outdir_pqt=None, fname_pq=None, use
     del ConverterBGC
     print("done.")
 
-    client.shutdown()
+    if not is_single_file:
+        client.shutdown()
 
     return
 
