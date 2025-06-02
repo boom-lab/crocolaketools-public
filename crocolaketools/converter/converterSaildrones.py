@@ -43,48 +43,6 @@ class ConverterSaildrones(Converter):
     # Methods                                                            #
     # ------------------------------------------------------------------ #
 
-    def prepare_data(self, flist=None, lock=None):
-        """Validate list of NetCDF files for processing.
-        Unlike SprayGliders, we don't need to chunk the files since Saildrones data is smaller.
-
-        Arguments:
-        flist -- list of files to process
-        lock  -- dask lock to use for concurrency
-        """
-        if lock is None:
-            warnings.warn("No lock provided. This might lead to concurrency or segmentation fault errors.")
-
-        if flist is None:
-            flist = os.listdir(self.input_path)
-            print("List of files not provided, guessing from input path: ", self.input_path)
-
-        print("Preparing files: ", flist)
-        for fname in flist:
-            if not fname.endswith(".nc"):
-                raise ValueError(f"{fname} does not end with '.nc'.")
-            
-            input_fname = os.path.join(self.input_path, fname)
-            print("Preparing file: ", input_fname)
-
-            if lock is not None:
-                lock.acquire(timeout=600)
-
-            try:
-                with xr.open_dataset(input_fname, engine="netcdf4", cache=False) as ds:
-                    invars = list(set(params.params["Saildrones"]) & set(ds.data_vars))
-                    if not invars:
-                        raise ValueError(f"No required variables found in {fname}")
-
-            except Exception as e:
-                print(f"Error Preparing file {input_fname}: {e}")
-                raise
-
-            finally:
-                if lock is not None:
-                    lock.release()
-
-        return
-
     def read_to_ddf(self, flist=None, lock=None):
         """Read list of NetCDF files and generate list of delayed objects with
         processed data
@@ -221,45 +179,6 @@ class ConverterSaildrones(Converter):
         df = super().add_qc_flags(df, qc_vars, 1)
 
         return df
-
-    def convert(self, filenames=None, filepath=None):
-        """Convert Saildrone NetCDF files to parquet format.
-        This overrides the base Converter's convert method to handle Saildrone-specific conversion.
-
-        Arguments:
-        filenames -- list of files to convert
-        filepath  -- path to files (not used, kept for compatibility)
-        """
-        if filenames is None:
-            filenames = os.listdir(self.input_path)
-            print("List of files not provided, guessing from input path: ", self.input_path)
-        print("List of files to convert: ", filenames)
-
-        # Validate files first
-        self.prepare_data(filenames, Lock())
-
-        # Read and process files
-        ddf = self.read_to_ddf(
-            flist=filenames,
-            lock=Lock()
-        )
-
-        # Add derived variables if needed
-        if self.add_derived_vars:
-            print("adding derived variables")
-            ddf = self.add_derived_variables(ddf)
-
-        # Reorder columns
-        ddf = self.reorder_columns(ddf)
-
-        # Remove duplicates
-        ddf = ddf.drop_duplicates()
-
-        # Save to parquet
-        print("save to parquet")
-        self.to_parquet(ddf)
-
-        return
 
 ##########################################################################
 if __name__ == "__main__":

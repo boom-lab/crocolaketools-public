@@ -50,17 +50,6 @@ def saildrones2parquet(saildrones_path=None, outdir_pqt=None, fname_pq=None, use
     else: # reads from file
         print("Using configuration from config.yaml")
         ConverterPHY = ConverterSaildrones(db_type='phy')
-
-    print("Prepared PHY files...")
-    ConverterPHY.prepare_data(
-        lock=Lock()
-    )
-
-    print("PHY files Prepared.")
-
-    # Restarting the server forces dask to free the memory
-    client.restart()
-
     print("Converting PHY files to parquet...")
     ConverterPHY.convert()
     print("PHY files converted to parquet.")
@@ -90,13 +79,6 @@ def saildrones2parquet(saildrones_path=None, outdir_pqt=None, fname_pq=None, use
     else: # reads from file
         print("Using configuration from config.yaml")
         ConverterBGC = ConverterSaildrones(db_type='bgc')
-
-    print("Prepared BGC files...")
-    ConverterBGC.prepare_data(
-        lock=Lock()
-    )
-
-    print("BGC files Prepared.")
 
     print("Converting BGC files to parquet...")
     ConverterBGC.convert()
