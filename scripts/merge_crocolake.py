@@ -77,6 +77,7 @@ def merge_crocolake(db_type,croco_path,outdir,croco_name):
     )
     print("getting dataframe")
     ddf = crocoloader.get_dataframe()
+    crocoloader.add_units_to_schema()
     ddf = ddf.repartition(partition_size="300MB")
 
     name_function = lambda x: f"{croco_name}_{x:04d}.parquet"
