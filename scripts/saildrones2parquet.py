@@ -36,7 +36,7 @@ def saildrones2parquet(saildrones_path=None, outdir_pqt=None, fname_pq=None, use
         files = [f for f in os.listdir(saildrones_path) if f.endswith('.nc')]
         is_single_file = len(files) == 1
 
-    # Only initialize Dask client if we're not processing a single file
+    # Only initialize Dask client if we are processing multiple files
     if not is_single_file:
         config_path = importlib.resources.files("crocolaketools.config").joinpath("config_cluster.yaml")
         config_cluster = yaml.safe_load(open(config_path))
@@ -111,7 +111,18 @@ def main():
 
     args = parser.parse_args()
 
-    saildrones2parquet(args.i,args.o,args.f,args.config)
+    # If --config flag is used, load the config.yaml file to get the input path
+    if args.config:
+        config_path = "./crocolaketools/config/config.yaml"
+        with open(config_path, "r") as file:
+            config_data = yaml.safe_load(file)
+
+        saildrones_config = config_data.get('Saildrones_PHY', {}) 
+        saildrones_path = saildrones_config.get('input_path', None)
+    else:
+        saildrones_path = args.i
+
+    saildrones2parquet(saildrones_path, args.o, args.f, args.config)
 
 ##########################################################################
 if __name__ == "__main__":

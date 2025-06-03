@@ -152,6 +152,10 @@ class ConverterSaildrones(Converter):
 
         df = super().remove_all_NAs(df, cols_to_check)
 
+        # Ensure consistent column ordering
+        if hasattr(self, 'schema_pq'):
+            df = df.reindex(columns=self.schema_pq.names)
+
         return df
 
     def standardize_data(self, df):
@@ -179,86 +183,38 @@ class ConverterSaildrones(Converter):
 
         return df
 
-    def convert_single_file(self, filename, lock=None):
-        """Handle conversion of a single file to pandas dataframe without using Dask to reduce overheads
-        
-        Arguments:
-        filename -- name of the file to convert
-        lock -- dask lock to use for concurrency (not used in single file mode)
-        
-        Returns:
-        df -- pandas dataframe containing the converted data
-        """
-        df, invars = self.read_to_df(filename, lock)
-        
-        # Compute the delayed result since read_to_df is still a delayed function
-        df, invars = dask.compute(df, invars)
-        
-        # Process the dataframe directly without Dask
-        df = self.process_df(df, invars)
-        df = dask.compute(df)[0]
-        
-        self.generate_schema(df.columns.to_list())
-        
-        return df
-
     def convert(self, filenames=None, filepath=None):
-        """Convert filename to parquet. This executes all the steps needed from
-        reading to converting to storing, and might not work for non-simple
-        workflows. You can still refer to it to build your own workflow.
-        """
+        """Override convert to handle single files without Dask overhead, and delegate to base class for multiple files."""
+        
         if filenames is None:
-            if filepath is None:
-                guess_path = self.input_path
-                warnings.warn("Filename(s) not provided, guessing from input path: " + guess_path)
-            else:
-                guess_path = filepath
-                warnings.warn("Filename(s) not provided, guessing from provided file path: " + guess_path)
+            guess_path = filepath or self.input_path
             filenames = os.listdir(guess_path)
-        print("List of files to convert: ", filenames)
+        print(f"List of files to convert: {filenames}")
 
-        # adapt for single filename input
         if isinstance(filenames, str):
             filenames = [filenames]
 
-        if len(filenames) > 1:
-            print("reading multiple files in parallel")
-            lock = Lock()
-            ddf = self.read_to_ddf(
-                flist=filenames,
-                lock=lock
-            )
-            
+        # Handle single file separately to avoid Dask overhead
+        if len(filenames) == 1:
+            print("Reading single file")
+            df, invars = self.read_to_df(filenames[0])
+            # Compute the delayed results
+            df, invars = dask.compute(df, invars)
+            df = self.process_df(df, invars)
+            df = dask.compute(df)[0]
+            self.generate_schema(df.columns.to_list())
             if self.add_derived_vars:
-                print("adding derived variables")
-                ddf = self.add_derived_variables(ddf)
-
-            ddf = self.reorder_columns(ddf)
-            ddf = ddf.drop_duplicates()
-            print("repartitioning dask dataframe")
-
-            ddf = ddf.repartition(partition_size="100MB")
-            print("save to parquet")
-            self.to_parquet(ddf)
-        else:
-            print("reading single file")
-            df = self.convert_single_file(filenames[0])
-            
-            if self.add_derived_vars:
-                print("adding derived variables")
-                # For single file, compute derived variables directly
+                print("Adding derived variables")
                 df = self.compute_derived_variables(df)
-            
+
             df = self.reorder_columns(df)
             df = df.drop_duplicates()
-            
-            print("save to parquet")
-            # Convert to dask DataFrame and use parent class's to_parquet method
             ddf = dd.from_pandas(df, npartitions=1)
-            ddf = ddf.repartition(partition_size="100MB")
+            ddf = ddf.repartition(partition_size="300MB")
             self.to_parquet(ddf)
-
-        return
+        else:
+            # Multiple files, delegate to base class for Dask processing
+            super().convert(filenames=filenames, filepath=filepath)
 
 ##########################################################################
 if __name__ == "__main__":
