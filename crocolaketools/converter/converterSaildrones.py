@@ -133,8 +133,6 @@ class ConverterSaildrones(Converter):
         df    -- pandas dataframe with standardized schema
         """
 
-        df = df.reset_index(drop=False)
-
         invars = invars + ["depth"]
 
         # only keep variables in invars
