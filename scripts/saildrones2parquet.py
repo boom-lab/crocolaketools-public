@@ -28,19 +28,9 @@ print = functools.partial(print, flush=True)
 
 def saildrones2parquet(saildrones_path=None, outdir_pqt=None, fname_pq=None, use_config_file=None):
 
-    # Check if we're dealing with a single file
-    is_single_file = False
-    if saildrones_path and os.path.isfile(saildrones_path):
-        is_single_file = True
-    elif saildrones_path and os.path.isdir(saildrones_path):
-        files = [f for f in os.listdir(saildrones_path) if f.endswith('.nc')]
-        is_single_file = len(files) == 1
-
-    # Only initialize Dask client if we are processing multiple files
-    if not is_single_file:
-        config_path = importlib.resources.files("crocolaketools.config").joinpath("config_cluster.yaml")
-        config_cluster = yaml.safe_load(open(config_path))
-        client = Client(**config_cluster["SAILDRONES"])
+    config_path = importlib.resources.files("crocolaketools.config").joinpath("config_cluster.yaml")
+    config_cluster = yaml.safe_load(open(config_path))
+    client = Client(**config_cluster["SAILDRONES"])
 
     if not use_config_file:
         print("Using user-defined configuration")
@@ -68,8 +58,7 @@ def saildrones2parquet(saildrones_path=None, outdir_pqt=None, fname_pq=None, use
 
     print("Working on BGC files...")
 
-    if not is_single_file:
-        client.restart()
+    client.restart()
 
     if not use_config_file:
         print("Using user-defined configuration")
@@ -96,8 +85,7 @@ def saildrones2parquet(saildrones_path=None, outdir_pqt=None, fname_pq=None, use
     del ConverterBGC
     print("done.")
 
-    if not is_single_file:
-        client.shutdown()
+    client.shutdown()
 
     return
 
@@ -111,18 +99,7 @@ def main():
 
     args = parser.parse_args()
 
-    # If --config flag is used, load the config.yaml file to get the input path
-    if args.config:
-        config_path = "./crocolaketools/config/config.yaml"
-        with open(config_path, "r") as file:
-            config_data = yaml.safe_load(file)
-
-        saildrones_config = config_data.get('Saildrones_PHY', {}) 
-        saildrones_path = saildrones_config.get('input_path', None)
-    else:
-        saildrones_path = args.i
-
-    saildrones2parquet(saildrones_path, args.o, args.f, args.config)
+    saildrones2parquet(args.i, args.o, args.f, args.config)
 
 ##########################################################################
 if __name__ == "__main__":

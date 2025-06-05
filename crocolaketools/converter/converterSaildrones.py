@@ -26,9 +26,11 @@ from crocolaketools.converter.converter import Converter
 ##########################################################################
 
 class ConverterSaildrones(Converter):
-    """Converter for Saildrone NetCDF files to TRITON-compatible Parquet format."""
+    """class ConverterSaildrones: methods to generate parquet schemas for
+    Saildrones NetCDF files"""
 
     def __init__(self, config=None, db_type=None):
+
         if config is not None and config.get("db") != "Saildrones":
             raise ValueError("Database must be 'Saildrones'.")
         elif config is None and db_type is not None:
@@ -39,13 +41,16 @@ class ConverterSaildrones(Converter):
 
         super().__init__(config)
 
+        self.is_multi_file = False # to determine if we are processing multiple or a single file
+
     # ------------------------------------------------------------------ #
     # Methods                                                            #
     # ------------------------------------------------------------------ #
 
+#------------------------------------------------------------------------------#
+## Read netcdf files and convert them to dask dataframe
     def read_to_ddf(self, flist=None, lock=None):
-        """Read list of NetCDF files and generate list of delayed objects with
-        processed data
+        """Read list of NetCDF files and generate a Dask DataFrame.
 
         Arguments:
         flist -- list of files to process
@@ -54,31 +59,41 @@ class ConverterSaildrones(Converter):
         Returns:
         results -- list of dask dataframes
         """
-
         if lock is None:
             warnings.warn("No lock provided. This might lead to concurrency or segmentation fault errors.")
 
+        self.is_multi_file = True  # Indicate multi-file processing
+        
         results = []
         for fname in flist:
             if not fname.endswith(".nc"):
                 raise ValueError(f"{fname} does not end with '.nc'.")
-            read_result = self.read_to_df(fname, lock)
+
+            read_result = dask.delayed(self.read_to_df)(fname, lock)
+            # Unpack the delayed tuple
+            df_delayed = read_result[0]
+            invars_delayed = read_result[1]
             proc_result = self.process_df(read_result[0], read_result[1])
             results.append(proc_result)
 
-        # combine all results into a single dask dataframe
         ddf = dd.from_delayed(results)
-        
         self.generate_schema(ddf.columns.to_list())
-
         self.call_guess_schema = True
-
         return ddf
 
-    @dask.delayed(nout=2)
+#------------------------------------------------------------------------------#
+## Read file to convert into a pandas dataframe
     def read_to_df(self, filename=None, lock=None):
-        """Read a Saildrone NetCDF file into a standardized pandas DataFrame."""
+        """Read file into a pandas DataFrame and decide return type based on context.
 
+        Arguments:
+        filename -- file name, excluding relative path
+        lock     -- dask lock to use for concurrency
+
+        Returns:
+        df        -- pandas DataFrame (if single file)
+        invars    -- list of variables in df
+        """
         if filename is None:
             raise ValueError("No filename provided for Saildrone database.")
 
@@ -119,8 +134,17 @@ class ConverterSaildrones(Converter):
             if lock is not None:
                 lock.release()
 
-        return df, invars
+        # Return based on whether this is part of multi-file processing
+        if self.is_multi_file:
+            return df, invars
+        
+        df = self.process_df(df, invars)
+        df = dask.compute(df)[0]
+        self.generate_schema(df.columns.to_list())
+        return df
 
+#------------------------------------------------------------------------------#
+## Process pandas dataframe to standardize it to CrocoLake schema
     @dask.delayed(nout=1)
     def process_df(self, df, invars):
         """Process pandas dataframe to standardize it to CrocoLake schema
@@ -156,6 +180,8 @@ class ConverterSaildrones(Converter):
 
         return df
 
+#------------------------------------------------------------------------------#
+## Convert parquet schema to xarray
     def standardize_data(self, df):
         """Standardize xarray dataset to schema consistent across databases
         Argument:
@@ -166,53 +192,23 @@ class ConverterSaildrones(Converter):
 
         if "latitude" not in df.columns or df["latitude"].isna().all():
             raise ValueError("Latitude is missing or NaN in the dataset. Cannot compute pressure.")
+        
 
         # GSW expects depth to be negative (below sea level), so we negate it here
         df["PRES"] = gsw.p_from_z(-df["depth"], df["latitude"])
         df["PRES"] = df["PRES"].astype("float32[pyarrow]")
 
+        # standardize data and generate schemas
         df = super().standardize_data(df)
 
         qc_vars = ["TEMP", "PSAL", "PRES"]
         if self.db_type == "BGC":
             qc_vars += ["DOXY", "CHLA", "CDOM", "BBP700"]
 
+        # add qc flag = 1 for temperature and salinity
         df = super().add_qc_flags(df, qc_vars, 1)
 
         return df
-
-    def convert(self, filenames=None, filepath=None):
-        """Override convert to handle single files without Dask overhead, and delegate to base class for multiple files."""
-        
-        if filenames is None:
-            guess_path = filepath or self.input_path
-            filenames = os.listdir(guess_path)
-        print(f"List of files to convert: {filenames}")
-
-        if isinstance(filenames, str):
-            filenames = [filenames]
-
-        # Handle single file separately to avoid Dask overhead
-        if len(filenames) == 1:
-            print("Reading single file")
-            df, invars = self.read_to_df(filenames[0])
-            # Compute the delayed results
-            df, invars = dask.compute(df, invars)
-            df = self.process_df(df, invars)
-            df = dask.compute(df)[0]
-            self.generate_schema(df.columns.to_list())
-            if self.add_derived_vars:
-                print("Adding derived variables")
-                df = self.compute_derived_variables(df)
-
-            df = self.reorder_columns(df)
-            df = df.drop_duplicates()
-            ddf = dd.from_pandas(df, npartitions=1)
-            ddf = ddf.repartition(partition_size="300MB")
-            self.to_parquet(ddf)
-        else:
-            # Multiple files, delegate to base class for Dask processing
-            super().convert(filenames=filenames, filepath=filepath)
 
 ##########################################################################
 if __name__ == "__main__":
