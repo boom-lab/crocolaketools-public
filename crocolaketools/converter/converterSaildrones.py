@@ -69,7 +69,9 @@ class ConverterSaildrones(Converter):
             if not fname.endswith(".nc"):
                 raise ValueError(f"{fname} does not end with '.nc'.")
 
-            read_result = dask.delayed(self.read_to_df)(fname, lock)
+            # Create a lock for each file
+            file_lock = Lock()
+            read_result = dask.delayed(self.read_to_df)(fname, file_lock)
             # Unpack the delayed tuple
             df_delayed = read_result[0]
             invars_delayed = read_result[1]
