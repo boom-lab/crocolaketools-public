@@ -42,6 +42,7 @@ class ConverterSaildrones(Converter):
         super().__init__(config)
 
         self.is_multi_file = False # to determine if we are processing multiple or a single file
+        self.shared_lock = None  # Initialize shared lock
 
     # ------------------------------------------------------------------ #
     # Methods                                                            #
@@ -60,26 +61,26 @@ class ConverterSaildrones(Converter):
         results -- list of dask dataframes
         """
         if lock is None:
-            warnings.warn("No lock provided. This might lead to concurrency or segmentation fault errors.")
+            # create a single shared lock for all files instead of individual locks
+            lock = Lock()
+            warnings.warn("No lock provided. Creating shared lock to prevent concurrency issues.")
 
-        self.is_multi_file = True  # Indicate multi-file processing
+        
+        self.shared_lock = lock    # store the shared lock for use in read_to_df
+        self.is_multi_file = True  # indicate multi-file processing
         
         results = []
         for fname in flist:
             if not fname.endswith(".nc"):
                 raise ValueError(f"{fname} does not end with '.nc'.")
 
-            # Create a lock for each file
-            file_lock = Lock()
-            read_result = dask.delayed(self.read_to_df)(fname, file_lock)
-            # Unpack the delayed tuple
-            df_delayed = read_result[0]
-            invars_delayed = read_result[1]
+            read_result = dask.delayed(self.read_to_df)(fname, lock)
             proc_result = self.process_df(read_result[0], read_result[1])
             results.append(proc_result)
 
+        # create the dask dataframe from all delayed objects
         ddf = dd.from_delayed(results)
-        self.generate_schema(ddf.columns.to_list())
+            
         self.call_guess_schema = True
         return ddf
 
@@ -102,13 +103,16 @@ class ConverterSaildrones(Converter):
         input_fname = os.path.join(self.input_path, filename)
         print(f"Reading file: {input_fname}")
 
-        if lock is not None:
-            lock.acquire(timeout=600)
+        # use shared lock if available, otherwise use provided lock
+        active_lock = self.shared_lock if self.shared_lock is not None else lock
+
+        if active_lock is not None:
+            active_lock.acquire(timeout=600)
 
         try:
-            ds = xr.open_dataset(input_fname, engine="netcdf4", cache=False)
-            invars = list(set(params.params["Saildrones"]) & set(ds.data_vars))
-            df = ds[invars].to_dataframe().reset_index()
+            with xr.open_dataset(input_fname, engine="netcdf4", cache=False) as ds:
+                invars = list(set(params.params["Saildrones"]) & set(ds.data_vars))
+                df = ds[invars].to_dataframe().reset_index()
 
             if "time" in df.columns:
                 df["time"] = pd.to_datetime(df["time"], errors="coerce").astype(ArrowDtype(pa.timestamp("ns")))
@@ -124,8 +128,9 @@ class ConverterSaildrones(Converter):
             # Update depth column where valid readings exist for each variable
             for var_name, assigned_depth in depth_map.items():
                 if var_name in df.columns:
-                    count = df[var_name].notna().sum()
-                    df.loc[df[var_name].notna(), "depth"] = assigned_depth
+                    mask = df[var_name].notna()
+                    count = mask.sum()
+                    df.loc[mask, "depth"] = assigned_depth
                     print(f"Assigned depth {assigned_depth}m to {count} records from variable '{var_name}'")
 
         except Exception as e:
@@ -133,8 +138,8 @@ class ConverterSaildrones(Converter):
             raise
 
         finally:
-            if lock is not None:
-                lock.release()
+            if active_lock is not None:
+                active_lock.release()
 
         # Return based on whether this is part of multi-file processing
         if self.is_multi_file:
@@ -176,9 +181,10 @@ class ConverterSaildrones(Converter):
 
         df = super().remove_all_NAs(df, cols_to_check)
 
-        # Ensure consistent column ordering
-        if hasattr(self, 'schema_pq'):
-            df = df.reindex(columns=self.schema_pq.names)
+        # Ensure consistent column ordering only if schema exists
+        if hasattr(self, 'schema_pq') and self.schema_pq is not None:
+            available_cols = [col for col in self.schema_pq.names if col in df.columns]
+            df = df.reindex(columns=available_cols)
 
         return df
 
@@ -195,6 +201,8 @@ class ConverterSaildrones(Converter):
         if "latitude" not in df.columns or df["latitude"].isna().all():
             raise ValueError("Latitude is missing or NaN in the dataset. Cannot compute pressure.")
         
+        if "depth" not in df.columns:
+            raise ValueError("Depth column is missing from the dataset.")
 
         # GSW expects depth to be negative (below sea level), so we negate it here
         df["PRES"] = gsw.p_from_z(-df["depth"], df["latitude"])
@@ -207,8 +215,10 @@ class ConverterSaildrones(Converter):
         if self.db_type == "BGC":
             qc_vars += ["DOXY", "CHLA", "CDOM", "BBP700"]
 
-        # add qc flag = 1 for temperature and salinity
-        df = super().add_qc_flags(df, qc_vars, 1)
+        # add QC flag = 1 for variables that exist in the dataframe
+        existing_qc_vars = [var for var in qc_vars if var in df.columns]
+        if existing_qc_vars:
+            df = super().add_qc_flags(df, existing_qc_vars, 1)
 
         return df
 
