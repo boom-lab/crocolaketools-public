@@ -41,17 +41,17 @@ class ConverterSaildrones(Converter):
 
         super().__init__(config)
 
-        self.is_multi_file = False # to determine if we are processing multiple or a single file
-        self.shared_lock = None  # Initialize shared lock
+        self.is_multi_file = False # to determine if we are processing multi-files or a single file
 
     # ------------------------------------------------------------------ #
     # Methods                                                            #
     # ------------------------------------------------------------------ #
 
 #------------------------------------------------------------------------------#
-## Read netcdf files and convert them to dask dataframe
+## Read multiple netcdf files and convert them to dask dataframe
     def read_to_ddf(self, flist=None, lock=None):
-        """Read list of NetCDF files and generate a Dask DataFrame.
+        """Read list of netCDF files and generate list of delayed objects with
+        processed data
 
         Arguments:
         flist -- list of files to process
@@ -60,28 +60,23 @@ class ConverterSaildrones(Converter):
         Returns:
         results -- list of dask dataframes
         """
-        if lock is None:
-            # create a single shared lock for all files instead of individual locks
-            lock = Lock()
-            warnings.warn("No lock provided. Creating shared lock to prevent concurrency issues.")
 
-        
-        self.shared_lock = lock    # store the shared lock for use in read_to_df
+        if lock is None:
+            warnings.warn("No lock provided. This might lead to concurrency or segmentation fault errors.")
+
         self.is_multi_file = True  # indicate multi-file processing
         
         results = []
         for fname in flist:
-            if not fname.endswith(".nc"):
-                raise ValueError(f"{fname} does not end with '.nc'.")
-
             read_result = dask.delayed(self.read_to_df)(fname, lock)
-            proc_result = self.process_df(read_result[0], read_result[1])
+            proc_result = dask.delayed(self.process_df)(read_result[0], read_result[1])
             results.append(proc_result)
 
         # create the dask dataframe from all delayed objects
         ddf = dd.from_delayed(results)
             
         self.call_guess_schema = True
+
         return ddf
 
 #------------------------------------------------------------------------------#
@@ -97,18 +92,17 @@ class ConverterSaildrones(Converter):
         df        -- pandas DataFrame (if single file)
         invars    -- list of variables in df
         """
+
+        if lock is None:
+            warnings.warn("No lock provided. This might lead to concurrency or segmentation fault errors.")
+
         if filename is None:
             raise ValueError("No filename provided for Saildrone database.")
 
         input_fname = os.path.join(self.input_path, filename)
         print(f"Reading file: {input_fname}")
 
-        # use shared lock if available, otherwise use provided lock
-        active_lock = self.shared_lock if self.shared_lock is not None else lock
-
-        if active_lock is not None:
-            active_lock.acquire(timeout=600)
-
+        lock.acquire(timeout=600)
         try:
             with xr.open_dataset(input_fname, engine="netcdf4", cache=False) as ds:
                 invars = list(set(params.params["Saildrones"]) & set(ds.data_vars))
@@ -137,22 +131,17 @@ class ConverterSaildrones(Converter):
             print(f"Error reading file {input_fname}: {e}")
             raise
 
-        finally:
-            if active_lock is not None:
-                active_lock.release()
+        finally: # always release lock in case of error in try block
+            lock.release()
 
         # Return based on whether this is part of multi-file processing
-        if self.is_multi_file:
-            return df, invars
-        
-        df = self.process_df(df, invars)
-        df = dask.compute(df)[0]
-        self.generate_schema(df.columns.to_list())
-        return df
+        if not self.is_multi_file:
+            return self.process_df(df, invars)
+
+        return df, invars
 
 #------------------------------------------------------------------------------#
 ## Process pandas dataframe to standardize it to CrocoLake schema
-    @dask.delayed(nout=1)
     def process_df(self, df, invars):
         """Process pandas dataframe to standardize it to CrocoLake schema
 
@@ -181,11 +170,6 @@ class ConverterSaildrones(Converter):
 
         df = super().remove_all_NAs(df, cols_to_check)
 
-        # Ensure consistent column ordering only if schema exists
-        if hasattr(self, 'schema_pq') and self.schema_pq is not None:
-            available_cols = [col for col in self.schema_pq.names if col in df.columns]
-            df = df.reindex(columns=available_cols)
-
         return df
 
 #------------------------------------------------------------------------------#
@@ -200,9 +184,6 @@ class ConverterSaildrones(Converter):
 
         if "latitude" not in df.columns or df["latitude"].isna().all():
             raise ValueError("Latitude is missing or NaN in the dataset. Cannot compute pressure.")
-        
-        if "depth" not in df.columns:
-            raise ValueError("Depth column is missing from the dataset.")
 
         # GSW expects depth to be negative (below sea level), so we negate it here
         df["PRES"] = gsw.p_from_z(-df["depth"], df["latitude"])
@@ -215,10 +196,10 @@ class ConverterSaildrones(Converter):
         if self.db_type == "BGC":
             qc_vars += ["DOXY", "CHLA", "CDOM", "BBP700"]
 
-        # add QC flag = 1 for variables that exist in the dataframe
-        existing_qc_vars = [var for var in qc_vars if var in df.columns]
-        if existing_qc_vars:
-            df = super().add_qc_flags(df, existing_qc_vars, 1)
+        # add QC flag = 1 for some variables that exist in the dataframe
+        df = super().add_qc_flags(df, ["TEMP","PSAL","PRES"], 1)
+
+        df = df[sorted(df.columns.tolist())]
 
         return df
 
