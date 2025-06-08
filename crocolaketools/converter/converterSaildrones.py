@@ -41,8 +41,6 @@ class ConverterSaildrones(Converter):
 
         super().__init__(config)
 
-        self.is_multi_file = False # to determine if we are processing multi-files or a single file
-
     # ------------------------------------------------------------------ #
     # Methods                                                            #
     # ------------------------------------------------------------------ #
@@ -63,12 +61,11 @@ class ConverterSaildrones(Converter):
 
         if lock is None:
             warnings.warn("No lock provided. This might lead to concurrency or segmentation fault errors.")
-
-        self.is_multi_file = True  # indicate multi-file processing
         
         results = []
         for fname in flist:
-            read_result = dask.delayed(self.read_to_df)(fname, lock)
+            # Use 'return_invars' to indicate that we want to return tuple (df, invars) for multi-file processing
+            read_result = dask.delayed(self.read_to_df)(fname, lock, return_invars=True)
             proc_result = dask.delayed(self.process_df)(read_result[0], read_result[1])
             results.append(proc_result)
 
@@ -81,12 +78,14 @@ class ConverterSaildrones(Converter):
 
 #------------------------------------------------------------------------------#
 ## Read file to convert into a pandas dataframe
-    def read_to_df(self, filename=None, lock=None):
-        """Read file into a pandas DataFrame and decide return type based on context.
+    def read_to_df(self, filename=None, lock=None, return_invars=False):
+        """Read file into a pandas DataFrame and decide whether to return tuple (df, invars) for 
+        multi-file processing using read_to_ddf, or just df for single file processing.
 
         Arguments:
-        filename -- file name, excluding relative path
-        lock     -- dask lock to use for concurrency
+        filename      -- file name, excluding relative path
+        lock          -- dask lock to use for concurrency
+        return_invars -- to decide whether to return only df or tuple (df, invars)
 
         Returns:
         df        -- pandas DataFrame (if single file)
@@ -134,11 +133,11 @@ class ConverterSaildrones(Converter):
         finally: # always release lock in case of error in try block
             lock.release()
 
-        # Return based on whether this is part of multi-file processing
-        if not self.is_multi_file:
+        # Different returns to match the base class's convert() method expectations.
+        if not return_invars: # Return only pandas datafram (df) for single file processing
             return self.process_df(df, invars)
 
-        return df, invars
+        return df, invars # Return tuple (df, invars) for multi-file processing in read_to_ddf()
 
 #------------------------------------------------------------------------------#
 ## Process pandas dataframe to standardize it to CrocoLake schema
