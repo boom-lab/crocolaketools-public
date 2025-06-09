@@ -30,7 +30,6 @@ class ConverterSaildrones(Converter):
     Saildrones NetCDF files"""
 
     def __init__(self, config=None, db_type=None):
-
         if config is not None and config.get("db") != "Saildrones":
             raise ValueError("Database must be 'Saildrones'.")
         elif config is None and db_type is not None:
@@ -46,7 +45,7 @@ class ConverterSaildrones(Converter):
     # ------------------------------------------------------------------ #
 
 #------------------------------------------------------------------------------#
-## Read multiple netcdf files and convert them to dask dataframe
+## Read netcdf files and convert them to dask dataframe
     def read_to_ddf(self, flist=None, lock=None):
         """Read list of netCDF files and generate list of delayed objects with
         processed data
@@ -61,39 +60,39 @@ class ConverterSaildrones(Converter):
 
         if lock is None:
             warnings.warn("No lock provided. This might lead to concurrency or segmentation fault errors.")
-        
+
         results = []
         for fname in flist:
-            # Use 'return_invars' to indicate that we want to return tuple (df, invars) for multi-file processing
-            read_result = dask.delayed(self.read_to_df)(fname, lock, return_invars=True)
-            proc_result = dask.delayed(self.process_df)(read_result[0], read_result[1])
+            if not fname.endswith(".nc"):
+                raise ValueError(f"{fname} does not end with '.nc'.")
+            read_result = self.read_to_df(fname, lock)
+            proc_result = self.process_df(read_result[0], read_result[1])
             results.append(proc_result)
 
-        # create the dask dataframe from all delayed objects
+        # combine all results into a single dask dataframe
         ddf = dd.from_delayed(results)
-            
+
         self.call_guess_schema = True
 
         return ddf
 
 #------------------------------------------------------------------------------#
 ## Read file to convert into a pandas dataframe
-    def read_to_df(self, filename=None, lock=None, return_invars=False):
-        """Read file into a pandas DataFrame and decide whether to return tuple (df, invars) for 
-        multi-file processing using read_to_ddf, or just df for single file processing.
+    @dask.delayed(nout=2)
+    def read_to_df(self, filename=None, lock=None):
+        """Read file into a pandas dataframe
 
-        Arguments:
-        filename      -- file name, excluding relative path
-        lock          -- dask lock to use for concurrency
-        return_invars -- to decide whether to return only df or tuple (df, invars)
+        Argument:
+        filename -- file name, excluding relative path
+        lock     -- dask lock to use for concurrency
 
-        Returns:
-        df        -- pandas DataFrame (if single file)
-        invars    -- list of variables in df
+        Returns
+        df     -- pandas dataframe
+        invars -- list of variables in df
         """
 
         if lock is None:
-            warnings.warn("No lock provided. This might lead to concurrency or segmentation fault errors.")
+            lock = Lock()
 
         if filename is None:
             raise ValueError("No filename provided for Saildrone database.")
@@ -133,14 +132,11 @@ class ConverterSaildrones(Converter):
         finally: # always release lock in case of error in try block
             lock.release()
 
-        # Different returns to match the base class's convert() method expectations.
-        if not return_invars: # Return only pandas datafram (df) for single file processing
-            return self.process_df(df, invars)
-
-        return df, invars # Return tuple (df, invars) for multi-file processing in read_to_ddf()
+        return df, invars
 
 #------------------------------------------------------------------------------#
 ## Process pandas dataframe to standardize it to CrocoLake schema
+    @dask.delayed(nout=1)
     def process_df(self, df, invars):
         """Process pandas dataframe to standardize it to CrocoLake schema
 
@@ -175,8 +171,10 @@ class ConverterSaildrones(Converter):
 ## Convert parquet schema to xarray
     def standardize_data(self, df):
         """Standardize xarray dataset to schema consistent across databases
+
         Argument:
         ds -- xarray dataset
+
         Returns:
         df -- homogenized dataframe
         """
@@ -201,6 +199,38 @@ class ConverterSaildrones(Converter):
         df = df[sorted(df.columns.tolist())]
 
         return df
+
+
+    def convert(self, filenames=None, filepath=None):
+        """Override convert to handle single files without Dask overhead, and delegate to base class for multiple files."""
+        
+        if filenames is None:
+            guess_path = filepath or self.input_path
+            filenames = os.listdir(guess_path)
+
+        if isinstance(filenames, str):
+            filenames = [filenames]
+
+        # Handle single file to compute delayed results
+        if len(filenames) == 1:
+            print("Reading single file")
+            df, invars = self.read_to_df(filenames[0])
+            # Compute the delayed results
+            df, invars = dask.compute(df, invars)
+            df = self.process_df(df, invars)
+            df = dask.compute(df)[0]
+            self.generate_schema(df.columns.to_list())
+            if self.add_derived_vars:
+                print("Adding derived variables")
+                df = self.compute_derived_variables(df)
+            df = self.reorder_columns(df)
+            df = df.drop_duplicates()
+            ddf = dd.from_pandas(df, npartitions=1)
+            ddf = ddf.repartition(partition_size="300MB")
+            self.to_parquet(ddf)
+        else:
+            # Multiple files, delegate to base class for Dask processing
+            super().convert(filenames=filenames, filepath=filepath)
 
 ##########################################################################
 if __name__ == "__main__":
