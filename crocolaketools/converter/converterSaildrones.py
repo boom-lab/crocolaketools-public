@@ -214,19 +214,17 @@ class ConverterSaildrones(Converter):
         # Handle single file to compute delayed results
         if len(filenames) == 1:
             print("Reading single file")
-            df, invars = self.read_to_df(filenames[0])
-            # Compute the delayed results
-            df, invars = dask.compute(df, invars)
-            df = self.process_df(df, invars)
-            df = dask.compute(df)[0]
+            df_delayed, invars_delayed = self.read_to_df(filenames[0])
+            processed_delayed = self.process_df(df_delayed, invars_delayed)
+            df = dask.compute(processed_delayed)[0]
+            ddf = dd.from_pandas(df, npartitions=1)
+            
             self.generate_schema(df.columns.to_list())
             if self.add_derived_vars:
                 print("Adding derived variables")
-                df = self.compute_derived_variables(df)
-            df = self.reorder_columns(df)
-            df = df.drop_duplicates()
-            ddf = dd.from_pandas(df, npartitions=1)
-            ddf = ddf.repartition(partition_size="300MB")
+                ddf = self.compute_derived_variables(ddf)
+            ddf = self.reorder_columns(ddf)
+            ddf = ddf.drop_duplicates()
             self.to_parquet(ddf)
         else:
             # Multiple files, delegate to base class for Dask processing
