@@ -51,7 +51,9 @@ def saildrones2parquet(saildrones_path=None, outdir_pqt=None, fname_pq=None, use
         print("Using configuration from config.yaml")
         ConverterPHY = ConverterSaildrones(db_type='phy')
     print("Converting PHY files to parquet...")
-    ConverterPHY.convert()
+    ConverterPHY.convert(
+        filepath=ConverterPHY.input_path,
+    )
     print("PHY files converted to parquet.")
     del ConverterPHY
     print("done.")
@@ -80,7 +82,9 @@ def saildrones2parquet(saildrones_path=None, outdir_pqt=None, fname_pq=None, use
         ConverterBGC = ConverterSaildrones(db_type='bgc')
 
     print("Converting BGC files to parquet...")
-    ConverterBGC.convert()
+    ConverterBGC.convert(
+        filepath=ConverterBGC.input_path,
+    )
     print("BGC files converted to parquet.")
     del ConverterBGC
     print("done.")
