@@ -109,20 +109,33 @@ class ConverterSaildrones(Converter):
             if "time" in df.columns:
                 df["time"] = pd.to_datetime(df["time"], errors="coerce").astype(ArrowDtype(pa.timestamp("ns")))
 
-            # Assign depths based on metadata and known sensor installation
-            depth_map = {
-                "TEMP_SBE37_MEAN": 1.7,
-                "PSAL_SBE37_MEAN": 1.7,
-                "O2_CONC_SBE37_MEAN": 1.7,
-                "TEMP_DEPTH_HALFMETER_MEAN": 0.5
-            }
+            # We don't have a depth values explicitly in the dataset, 
+            # so we will extract it from metadata in some installed sensors.
+            variables = [
+                "TEMP_SBE37_MEAN",
+                "TEMP_DEPTH_HALFMETER_MEAN",
+                "O2_CONC_SBE37_MEAN",
+                "SAL_SBE37_MEAN",
+                "CHLOR_WETLABS_MEAN",
+                "CDOM_MEAN",
+                "BKSCT_RED_MEAN"
+            ]
+
+            depth_map = {}
+
+            # Loop through variables and extract depth from "installed_height" attribute
+            for var in variables:
+                if var in ds.data_vars:
+                    depth_map[var] = ds[var].attrs.get("installed_height", None)
+
+            print("Depth Map:", depth_map)
 
             # Update depth column where valid readings exist for each variable
             for var_name, assigned_depth in depth_map.items():
                 if var_name in df.columns:
                     mask = df[var_name].notna()
                     count = mask.sum()
-                    df.loc[mask, "depth"] = assigned_depth
+                    df["depth"] = df["depth"].where(~mask, other=assigned_depth)
                     print(f"Assigned depth {assigned_depth}m to {count} records from variable '{var_name}'")
 
         except Exception as e:
@@ -183,7 +196,7 @@ class ConverterSaildrones(Converter):
             raise ValueError("Latitude is missing or NaN in the dataset. Cannot compute pressure.")
 
         # GSW expects depth to be negative (below sea level), so we negate it here
-        df["PRES"] = gsw.p_from_z(-df["depth"], df["latitude"])
+        df["PRES"] = gsw.p_from_z(df["depth"], df["latitude"])
         df["PRES"] = df["PRES"].astype("float32[pyarrow]")
 
         # standardize data and generate schemas
