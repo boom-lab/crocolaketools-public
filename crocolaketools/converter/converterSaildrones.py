@@ -109,26 +109,16 @@ class ConverterSaildrones(Converter):
             if "time" in df.columns:
                 df["time"] = pd.to_datetime(df["time"], errors="coerce").astype(ArrowDtype(pa.timestamp("ns")))
 
-            # We don't have a depth values explicitly in the dataset, 
-            # so we will extract it from metadata in some installed sensors.
-            variables = [
-                "TEMP_SBE37_MEAN",
-                "TEMP_DEPTH_HALFMETER_MEAN",
-                "O2_CONC_SBE37_MEAN",
-                "SAL_SBE37_MEAN",
-                "CHLOR_WETLABS_MEAN",
-                "CDOM_MEAN",
-                "BKSCT_RED_MEAN"
-            ]
-
-            depth_map = {}
-
-            # Loop through variables and extract depth from "installed_height" attribute
-            for var in variables:
-                if var in ds.data_vars:
-                    depth_map[var] = ds[var].attrs.get("installed_height", None)
-
-            print("Depth Map:", depth_map)
+            # Assign depths based on metadata and known sensor installation
+            depth_map = {
+                "TEMP_DEPTH_HALFMETER_MEAN": 0.5,
+                "TEMP_SBE37_MEAN": 1.7,
+                "SAL_SBE37_MEAN": 1.7,
+                "O2_CONC_SBE37_MEAN": 1.7,
+                "CHLOR_WETLABS_MEAN": 1.9,
+                "CDOM_MEAN": 1.9,
+                "BKSCT_RED_MEAN": 1.9
+            }
 
             # Update depth column where valid readings exist for each variable
             for var_name, assigned_depth in depth_map.items():
@@ -198,7 +188,7 @@ class ConverterSaildrones(Converter):
 
         # convert depth to pressure using the Gibbs SeaWater (GSW) Oceanographic
         # Toolbox of TEOS-10
-        df["PRES"] = gsw.p_from_z(df["depth"], df["latitude"])
+        df["PRES"] = gsw.p_from_z(-df["depth"], df["latitude"])
         df["PRES"] = df["PRES"].astype("float32[pyarrow]")
 
         # standardize data and generate schemas
