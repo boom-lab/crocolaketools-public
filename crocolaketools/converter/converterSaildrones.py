@@ -135,7 +135,7 @@ class ConverterSaildrones(Converter):
                 if var_name in df.columns:
                     mask = df[var_name].notna()
                     count = mask.sum()
-                    df["depth"] = df["depth"].where(~mask, other=assigned_depth)
+                    df.loc[mask, "depth"] = assigned_depth
                     print(f"Assigned depth {assigned_depth}m to {count} records from variable '{var_name}'")
 
         except Exception as e:
@@ -162,6 +162,10 @@ class ConverterSaildrones(Converter):
         """
 
         invars = invars + ["depth"]
+
+        # Filter out rows where latitude or longitude are missing
+        # Since the data cannot be properly located in space and time.
+        df = df[df["latitude"].notna() & df["longitude"].notna()]
 
         # only keep variables in invars
         cols_to_drop = [item for item in df.columns.to_list() if item not in invars]
@@ -192,10 +196,8 @@ class ConverterSaildrones(Converter):
         df -- homogenized dataframe
         """
 
-        if "latitude" not in df.columns or df["latitude"].isna().all():
-            raise ValueError("Latitude is missing or NaN in the dataset. Cannot compute pressure.")
-
-        # GSW expects depth to be negative (below sea level), so we negate it here
+        # convert depth to pressure using the Gibbs SeaWater (GSW) Oceanographic
+        # Toolbox of TEOS-10
         df["PRES"] = gsw.p_from_z(df["depth"], df["latitude"])
         df["PRES"] = df["PRES"].astype("float32[pyarrow]")
 
