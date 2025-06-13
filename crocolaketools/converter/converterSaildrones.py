@@ -111,19 +111,20 @@ class ConverterSaildrones(Converter):
 
             # Assign depths based on metadata and known sensor installation
             depth_map = {
+                "TEMP_DEPTH_HALFMETER_MEAN": 0.5,
+                "TEMP_SBE37_MEAN": 1.7,
+                "O2_CONC_SBE37_MEAN": 1.7,
+                "SAL_SBE37_MEAN": 1.7,
                 "BKSCT_RED_MEAN": 1.9,
                 "CDOM_MEAN": 1.9,
                 "CHLOR_WETLABS_MEAN": 1.9,
-                "O2_CONC_SBE37_MEAN": 1.7,
-                "SAL_SBE37_MEAN": 1.7,
-                "TEMP_SBE37_MEAN": 1.7,
-                "TEMP_DEPTH_HALFMETER_MEAN": 0.5,
             }
 
             # Update depth column where valid readings exist for each variable
+            df["depth"] = np.nan
             for var_name, assigned_depth in depth_map.items():
                 if var_name in df.columns:
-                    mask = df[var_name].notna()
+                    mask = df[var_name].notna() & df["depth"].isna()
                     count = mask.sum()
                     df.loc[mask, "depth"] = assigned_depth
                     print(f"Assigned depth {assigned_depth}m to {count} records from variable '{var_name}'")
@@ -161,9 +162,9 @@ class ConverterSaildrones(Converter):
         cols_to_drop = [item for item in df.columns.to_list() if item not in invars]
         df = df.drop(columns=cols_to_drop)
 
-        # Combine multiple temperature sources into a single column, prioritizing non-missing values
+        # Combine multiple temperature sources into a single column
         temp_sources = ["TEMP_SBE37_MEAN", "TEMP_DEPTH_HALFMETER_MEAN"]
-        df["TEMP_SBE37_MEAN"] = df[temp_sources].bfill(axis=1).iloc[:, 0]
+        df["TEMP"] = df[temp_sources].bfill(axis=1).iloc[:, 0]
 
         # make df consistent with CrocoLake schema
         df = self.standardize_data(df)
