@@ -162,9 +162,11 @@ class ConverterSaildrones(Converter):
         cols_to_drop = [item for item in df.columns.to_list() if item not in invars]
         df = df.drop(columns=cols_to_drop)
 
-        # Combine multiple temperature sources into a single column
+        # Combine multiple temperature sources into a single column, prioritizing non-missing values
         temp_sources = ["TEMP_SBE37_MEAN", "TEMP_DEPTH_HALFMETER_MEAN"]
-        df["TEMP"] = df[temp_sources].bfill(axis=1).iloc[:, 0]
+        existing_temp_sources = [col for col in temp_sources if col in df.columns]
+
+        df["TEMP"] = df[existing_temp_sources].bfill(axis=1).iloc[:, 0]
 
         # make df consistent with CrocoLake schema
         df = self.standardize_data(df)
