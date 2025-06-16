@@ -106,9 +106,6 @@ class ConverterSaildrones(Converter):
                 invars = list(set(params.params["Saildrones"]) & set(ds.data_vars))
                 df = ds[invars].to_dataframe().reset_index()
 
-            if "time" in df.columns:
-                df["time"] = pd.to_datetime(df["time"], errors="coerce").astype(ArrowDtype(pa.timestamp("ns")))
-
             # Assign depths based on metadata and known sensor installation
             depth_map = {
                 "TEMP_DEPTH_HALFMETER_MEAN": 0.5,
@@ -120,14 +117,24 @@ class ConverterSaildrones(Converter):
                 "CHLOR_WETLABS_MEAN": 1.9,
             }
 
-            # Update depth column where valid readings exist for each variable
-            df["depth"] = np.nan
+            # Split data into depth-specific DataFrames for each variable
+            df_list = []
+            common_cols = ["time", "latitude", "longitude"]
+
             for var_name, assigned_depth in depth_map.items():
                 if var_name in df.columns:
-                    mask = df[var_name].notna() & df["depth"].isna()
-                    count = mask.sum()
-                    df.loc[mask, "depth"] = assigned_depth
-                    print(f"Assigned depth {assigned_depth}m to {count} records from variable '{var_name}'")
+                    temp_df = df[df[var_name].notna()].copy()
+                    if not temp_df.empty:
+                        # Create a new dataframe with common columns, the specific variable, and the assigned depth
+                        new_row_df = temp_df[common_cols + [var_name]].copy()
+                        new_row_df["depth"] = assigned_depth
+                        df_list.append(new_row_df)
+
+            # Concatenate all the depth-specific dataframes
+            df_combined = pd.concat(df_list, ignore_index=True)
+
+            # For each unique (time, lat, lon, depth), keep the first non-null value per variable
+            df = df_combined.groupby(common_cols + ["depth"]).first().reset_index()
 
         except Exception as e:
             print(f"Error reading file {input_fname}: {e}")
@@ -155,18 +162,7 @@ class ConverterSaildrones(Converter):
         invars = invars + ["depth"]
 
         # Filter out rows where latitude or longitude are missing
-        # Since the data cannot be properly located in space and time.
         df = df[df["latitude"].notna() & df["longitude"].notna()]
-
-        # only keep variables in invars
-        cols_to_drop = [item for item in df.columns.to_list() if item not in invars]
-        df = df.drop(columns=cols_to_drop)
-
-        # Combine multiple temperature sources into a single column, prioritizing non-missing values
-        temp_sources = ["TEMP_SBE37_MEAN", "TEMP_DEPTH_HALFMETER_MEAN"]
-        existing_temp_sources = [col for col in temp_sources if col in df.columns]
-
-        df["TEMP"] = df[existing_temp_sources].bfill(axis=1).iloc[:, 0]
 
         # make df consistent with CrocoLake schema
         df = self.standardize_data(df)
@@ -198,6 +194,11 @@ class ConverterSaildrones(Converter):
         df["PRES"] = gsw.p_from_z(-df["depth"], df["latitude"])
         df["PRES"] = df["PRES"].astype("float32[pyarrow]")
 
+        # Merge temperature readings from multiple sensors into a unified 'TEMP' column.
+        temp_sources = ["TEMP_SBE37_MEAN", "TEMP_DEPTH_HALFMETER_MEAN"]
+        existing_temp_sources = [col for col in temp_sources if col in df.columns]
+        df["TEMP"] = df[existing_temp_sources].bfill(axis=1).iloc[:, 0]
+
         # standardize data and generate schemas
         df = super().standardize_data(df)
 
@@ -212,7 +213,8 @@ class ConverterSaildrones(Converter):
 
         return df
 
-
+#------------------------------------------------------------------------------#
+## Convert file
     def convert(self, filenames=None, filepath=None):
         """Override convert to handle single files without Dask overhead, and delegate to base class for multiple files."""
         
@@ -230,16 +232,15 @@ class ConverterSaildrones(Converter):
             processed_delayed = self.process_df(df_delayed, invars_delayed)
             df = dask.compute(processed_delayed)[0]
             ddf = dd.from_pandas(df, npartitions=1)
+            self.call_guess_schema = True
             
-            self.generate_schema(df.columns.to_list())
             if self.add_derived_vars:
                 print("Adding derived variables")
                 ddf = self.compute_derived_variables(ddf)
             ddf = self.reorder_columns(ddf)
             ddf = ddf.drop_duplicates()
             self.to_parquet(ddf)
-        else:
-            # Multiple files, delegate to base class for Dask processing
+        else: # Multiple files, delegate to base class for Dask processing
             super().convert(filenames=filenames, filepath=filepath)
 
 ##########################################################################
