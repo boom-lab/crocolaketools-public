@@ -106,7 +106,7 @@ class ConverterSaildrones(Converter):
                 invars = list(set(params.params["Saildrones"]) & set(ds.data_vars))
                 df = ds[invars].to_dataframe().reset_index()
 
-            # Assign depths based on metadata and known sensor installation
+            # Assign depths based on known sensor installation depth from metadata
             depth_map = {
                 "TEMP_DEPTH_HALFMETER_MEAN": 0.5,
                 "TEMP_SBE37_MEAN": 1.7,
@@ -168,7 +168,7 @@ class ConverterSaildrones(Converter):
         df = self.standardize_data(df)
 
         # remove rows that are all NAs
-        cols_to_check = ["TEMP", "PSAL", "PRES"]
+        cols_to_check = ["TEMP", "PSAL"]
         if self.db_type == "BGC":
             cols_to_check += ["DOXY", "CHLA", "CDOM", "BBP700"]
         cols_to_check = [col for col in cols_to_check if col in df.columns]
@@ -202,10 +202,6 @@ class ConverterSaildrones(Converter):
         # standardize data and generate schemas
         df = super().standardize_data(df)
 
-        qc_vars = ["TEMP", "PSAL", "PRES"]
-        if self.db_type == "BGC":
-            qc_vars += ["DOXY", "CHLA", "CDOM", "BBP700"]
-
         # add QC flag = 1 for some variables that exist in the dataframe
         df = super().add_qc_flags(df, ["TEMP","PSAL","PRES"], 1)
 
@@ -216,7 +212,9 @@ class ConverterSaildrones(Converter):
 #------------------------------------------------------------------------------#
 ## Convert file
     def convert(self, filenames=None, filepath=None):
-        """Override convert to handle single files without Dask overhead, and delegate to base class for multiple files."""
+        """Override convert to handle single file to compute delayed operations, 
+        and delegate to base class for multiple files.
+        """
         
         if filenames is None:
             guess_path = filepath or self.input_path
