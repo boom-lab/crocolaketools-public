@@ -44,6 +44,9 @@ for var in "${crocolake_variants[@]}"; do
     fi
     echo "ln_path for CROCOLAKE_$var: $crocolake_ln"
 
+    echo "Removing all existing symbolic links in $crocolake_ln"
+    find $crocolake_ln -type l -exec rm {} \;
+
     crocolake_out=$(yq ".CROCOLAKE_"$var".outdir_pq" "$yaml_file")
     crocolake_out=$(echo "$crocolake_out" | sed 's/^"//;s/"$//')
     if [[ "${crocolake_out}" != /* ]]; then

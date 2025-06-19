@@ -256,8 +256,8 @@ class Converter:
 
         ddf = self.sort_rows(ddf)
 
-        # print("repartitioning dask dataframe")
-        # ddf = ddf.repartition(partition_size="300MB")
+        print("repartitioning dask dataframe")
+        ddf = ddf.repartition(partition_size="300MB")
 
         print("save to parquet")
         self.to_parquet(ddf)
