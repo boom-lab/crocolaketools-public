@@ -592,24 +592,24 @@ class Converter:
 
         # absolute salinity
         df['ABS_SAL_COMPUTED'] = gsw.conversions.SA_from_SP(
-            df['PSAL'],
-            df['PRES'],
-            df['LONGITUDE'],
-            df['LATITUDE']
-        ).astype("float32[pyarrow]")
+            df['PSAL'], # PSU
+            df['PRES'], # dbar
+            df['LONGITUDE'], # degrees east
+            df['LATITUDE'] # degrees north
+        ).astype("float32[pyarrow]") # PSU
 
         # conservative temperature
         df['CONSERVATIVE_TEMP_COMPUTED'] = gsw.conversions.CT_from_t(
-            df['ABS_SAL_COMPUTED'],
-            df['TEMP'],
-            df['PRES']
-        ).astype("float32[pyarrow]")
+            df['ABS_SAL_COMPUTED'], # PSU
+            df['TEMP'], # degrees Celsius
+            df['PRES']  # dbar
+        ).astype("float32[pyarrow]") # degrees Celsius
 
         # potential density anomaly with reference pressure of 1000 dbar
         df['SIGMA1_COMPUTED'] = gsw.density.sigma1(
-            df['ABS_SAL_COMPUTED'],
-            df['CONSERVATIVE_TEMP_COMPUTED']
-        ).astype("float32[pyarrow]")
+            df['ABS_SAL_COMPUTED'], # PSU
+            df['CONSERVATIVE_TEMP_COMPUTED'] # degrees Celsius
+        ).astype("float32[pyarrow]") # kg/m^3
 
         return df
 
