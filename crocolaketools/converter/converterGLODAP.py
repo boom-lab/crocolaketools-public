@@ -10,6 +10,8 @@
 ##########################################################################
 import os
 import warnings
+# import dask
+# dask.config.set(temporary_directory="/home/enrico/myWHOI/CrocoLake/ctp-fork/tmp_dask")
 import dask.dataframe as dd
 import gsw
 import numpy as np
@@ -142,12 +144,12 @@ class ConverterGLODAP(Converter):
         )
         # persisting and repartitioning to minimize chances of empty partitions
         ddf = ddf.persist()
-        ddf = ddf.repartition(partition_size="100MB")
+        #ddf = ddf.repartition(partition_size="100MB")
 
         def compute_hash(df, cols, hash_col="hash"):
             # gives unique hash for each sequence of values of columns cols
             concat = df[cols].astype(str).agg('-'.join, axis=1)
-            df[hash_col] = pd.util.hash_pandas_object(concat, index=False).astype('uint64')
+            df[hash_col] = pd.util.hash_pandas_object(concat, index=False).astype('int64')
             return df
 
         # add hash_0 to perform sorts and groupbys and merges on one unique
@@ -155,7 +157,7 @@ class ConverterGLODAP(Converter):
         cols = ["G2expocode", "G2cruise", "G2station", "G2region", "G2cast"]
         hash_col = "hash_0"
         meta = ddf._meta
-        meta[hash_col] = 'uint64'
+        meta[hash_col] = 'int64'
         ddf = ddf.map_partitions(
             lambda df: compute_hash(df, cols, hash_col=hash_col),
             meta=meta,
@@ -171,12 +173,18 @@ class ConverterGLODAP(Converter):
         # in GLODAP, cast number resets when any in ["G2expocode", "G2cruise",
         # "G2station", "G2region"] changes
         meta = unique_casts._meta
-        meta["hash_1"] = "uint64"
+        meta["hash_1"] = "int64"
         hash_by_cols = ["G2expocode", "G2cruise", "G2station", "G2region"]
         unique_casts = unique_casts.map_partitions(
             lambda df: compute_hash(df, hash_by_cols, hash_col="hash_1"),
             meta=meta,
         )
+        missing_count = unique_casts["hash_1"].isnull().sum().compute()
+        if missing_count != 0:
+            raise ValueError(f"hash_1 contains {missing_count} NaN values. ")
+        unique_casts = unique_casts.set_index("hash_1", sorted=False, drop=False)
+        unique_casts = unique_casts.repartition(partition_size="100MB")
+        unique_casts = unique_casts.rename(columns={"hash_1": "hash_1_col"})
         unique_casts = unique_casts.persist()
 
         # count how many casts each hash_1 contains, and assign to each of them
@@ -189,25 +197,31 @@ class ConverterGLODAP(Converter):
         # we also need to set the index or dask generates "axis with duplicate
         # labels" in the line after this, failing to properly assign the new
         # column
-        df_indexed = unique_casts.set_index("hash_1", sorted=False)
-        df_indexed["cumul_count"] = df_indexed.groupby("hash_1").cumcount() + 1
-        unique_casts = df_indexed.reset_index()  # moving index (hash_1) back
-                                                 # into column with same name
+        missing_count = unique_casts["hash_1_col"].isnull().sum().compute()
+        missing_count = unique_casts.index.isnull().sum().compute()
+        print("partition lengths before cumcount:")
+        print(unique_casts.map_partitions(len).compute())
+        unique_casts["cumul_count"] = unique_casts.groupby("hash_1_col").cumcount() + 1
         unique_casts = unique_casts.persist()
+        if unique_casts["cumul_count"].isnull().any().compute():
+            raise ValueError("Warning: cumul_count in unique_casts has NaNs")
 
         # getting unique hash_1 values, repartitioning and persisting to prevent
         # empty partitions
-        unique_hash1 = unique_casts[ ["G2expocode","hash_1"] ].drop_duplicates()
-        unique_hash1 = unique_hash1.repartition(partition_size="100MB")
+        unique_hash1 = unique_casts[ ["G2expocode","hash_1_col"] ].drop_duplicates()
+        print("unique_hash1 index name:")
+        print(unique_hash1.index.name)
         unique_hash1 = unique_hash1.persist()
 
-        max_cumul_count = unique_casts.groupby('hash_1')['cumul_count'].max().reset_index()
-        max_cumul_count = max_cumul_count.persist()
-        max_cumul_count = max_cumul_count.rename(columns={"cumul_count":"max_cc"})
-        max_cumul_count = max_cumul_count.persist()
+        max_cumul_count = unique_casts.groupby('hash_1')['cumul_count'].max()
+        max_cumul_count = max_cumul_count.to_frame().persist()  # convert series to df
+        print("max_cumul_count index name:")
+        print(max_cumul_count.index.name)
 
-        unique_hash1 = unique_hash1.merge(max_cumul_count, on='hash_1', how='left')
+        unique_hash1 = unique_hash1.merge(max_cumul_count, left_index=True, right_index=True, how='left')
         unique_hash1 = unique_hash1.persist()
+        if unique_hash1["cumul_count"].isnull().any().compute():
+            raise ValueError("Warning: cumul_count in unique_hash1 has NaNs")
 
         unique_expocodes = unique_casts['G2expocode'].drop_duplicates().compute().tolist()
         unique_hash1_expocode_partitions = [
@@ -219,21 +233,36 @@ class ConverterGLODAP(Converter):
         unique_hash1_repartitioned = unique_hash1_repartitioned.persist()
 
         def shifting(df):
-            df["sum_mcc"] = df["max_cc"].shift(1).fillna(0).cumsum().astype("uint64")
+            df = df.copy()
+            df["sum_mcc"] = df["cumul_count"].shift(1).fillna(0).cumsum()
+            df["sum_mcc"] = df["sum_mcc"].fillna(0)
+            df["sum_mcc"] = df["sum_mcc"].astype("int64")
             return df
 
         meta = unique_hash1_repartitioned._meta
-        meta["sum_mcc"] = "uint64"
+        meta["sum_mcc"] = "int64"
+        pl = unique_hash1_repartitioned.map_partitions(len).compute()
+        if (pl==0).any():
+            empty_partitions = pl[pl==0].index.tolist()
+            raise ValueError(f"Warning: partition lengths before shifting contain 0s; empty partitions found at: {empty_partitions}")
         unique_hash1_repartitioned = unique_hash1_repartitioned.map_partitions( shifting, meta = meta )
+        unique_hash1_repartitioned["hash_1_col"] = unique_hash1_repartitioned["hash_1_col"].astype("int64")
+        unique_hash1_repartitioned = unique_hash1_repartitioned.persist()
 
-        unique_casts = unique_casts[ ["G2expocode","hash_0","hash_1","cumul_count"] ]
-        merged = unique_casts.merge(unique_hash1_repartitioned[ ["hash_1","sum_mcc"] ], on=['hash_1'], how="left")
+        unique_casts = unique_casts[ ["G2expocode","hash_0","hash_1_col","cumul_count"] ]
+        unique_casts["hash_1_col"] = unique_casts["hash_1_col"].astype("int64")
+
+        merged = unique_casts.merge(unique_hash1_repartitioned[ ["hash_1_col","sum_mcc"] ], left_index=True, right_index=True, how="left")
         merged["profile_nb"] = merged["cumul_count"] + merged["sum_mcc"]
-        merged["profile_nb"] = merged["profile_nb"].astype("uint64")
+        merged["profile_nb"] = merged["profile_nb"].astype("int64")
         merged = merged.persist()
 
-        merged_final = ddf.merge(merged[ ["hash_0","profile_nb"] ], on="hash_0", how="left")
-        merged_final = merged_final.drop(labels=["hash_0"],axis=1)
+        ddf["hash_0"] = ddf["hash_0"].astype("int64")
+        merged["hash_0"] = merged["hash_0"].astype("int64")
+        ddf = ddf.set_index("hash_0", sorted=False, drop=True)
+        merged = merged.set_index("hash_0", sorted=False, drop=True)
+        merged_final = ddf.merge(merged[ ["profile_nb"] ], left_index=True, right_index=True, how="left")#, on="hash_0", how="left")
+        merged_final = merged_final.reset_index().drop(labels=["hash_0"],axis=1)
 
         return merged_final.persist()
 

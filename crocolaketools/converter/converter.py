@@ -256,8 +256,8 @@ class Converter:
 
         ddf = self.sort_rows(ddf)
 
-        # print("repartitioning dask dataframe")
-        # ddf = ddf.repartition(partition_size="300MB")
+        print("repartitioning dask dataframe")
+        ddf = ddf.repartition(partition_size="300MB")
 
         print("save to parquet")
         self.to_parquet(ddf)
@@ -348,12 +348,10 @@ class Converter:
         append = False
         overwrite = True
         if len(os.listdir(self.outdir_pq))>0:
-            if not self.overwrite:
-                print("Folder exists and contains files. Trying to append to existing parquet files..")
-                append = True
-                overwrite = False
-            else:
+            if self.overwrite:
                 print("Folder exists and contains files. All content is being removed before and new files created.")
+            else:
+                raise ValueError("Folder exists and contains files. Overwrite is set to False, but no append is possible. Please remove the folder or set overwrite to True.")
 
         df.to_parquet(
             self.outdir_pq,
@@ -630,10 +628,12 @@ class Converter:
         # Add columns that will be created or dask might not find the metadata
         # when building the graph
         # Also add the columns to the schema for storing to parquet
+        meta = {}
+        meta = {col: ddf.dtypes[col] for col in ddf.columns}
+
         for col in ["ABS_SAL_COMPUTED","CONSERVATIVE_TEMP_COMPUTED","SIGMA1_COMPUTED"]:
             if col not in ddf.columns:
-                ddf[col] = pd.NA
-                ddf[col] = ddf[col].astype("float32[pyarrow]")
+                meta[col] = "float32[pyarrow]"
 
                 if not hasattr(self, 'schema_pq'):
                     warnings.warn("No schema found. You might encounter issues when storing to parquet.")
@@ -650,7 +650,7 @@ class Converter:
 
         ddf = ddf.map_partitions(
             self.compute_derived_variables,
-            meta=ddf
+            meta=meta
         )
 
         return ddf
