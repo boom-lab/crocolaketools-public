@@ -70,6 +70,33 @@ was designed to be used by researchers, engineers and data scientists in
 oceanograhy and to be accessed by the wider oceanographic
 community.
 
+# State of the field
+The need for homogenized ocean data product has prompted several efforts. 
+
+The most comprehensive project to date is likely the World Ocean Database (WOD), which contains more than 40 variables gathered from several sources (buoys, gliders, floats, bathythermographs, etc.). The earliest record dates back to 1772, the data is quality-controlled, and the database is regularly updated with the latest measurements available. The data is public and freely available through different interfaces ([WODselect web application](https://www.ncei.noaa.gov/access/world-ocean-database-select/dbsearch.html), THREDDS, HTTPS, FTP) in ASCII, Comma Separated Value (CSV) and netCDF formats. WOD is maintained by the National Centers for Environmental Information (NCEI) of the United States' National Oceanic and Atmospheric Administration (NOAA). 
+
+The International Quality-controlled Ocean Database (IQuOD) is an effort by the oceanographic community with the goal of producing the highest quality and complete single ocean profile repository along with (intelligent) metadata and assigned uncertainties. It includes subsurface ocean profiles of several variables, paying particular attention to temperature measurements. The database is prepared by NCEI, and it is freely available in netCDF format through multiple channels (THREDDS, HTTPS, FTP). 
+
+Argovis is a REST API and web application hosted at the University of Colorado, Boulder (United States) and serving profile data in JSON format from the Argo program, and from ship and drifters missions. 
+
+The Ocean Data Platform by the non-profit HUB Ocean is among the youngest projects in the community, and it allows to find and access datasets from a catalog. The user can interact with the platform through different interfaces (SDK, REST API, OQS, JupyterHub workspaces), loading the datasets in tabular format.
+
+The above efforts serve the data in ASCII, CSV, netCDF, or JSON formats. Generally speaking, netCDF is a binary format that offers the advantage to be compact and efficient when dealing with multidimensional data, while the others have the advantage of being human-readable (but can be very inefficient for large datasets). None of them is optimized for cloud object storage, although efforts are ongoing for netCDF (see Zarr and Icechunk). For this reason, Parquet has been drawing more attention from the earth sciences community recently: Parquet is a cloud-optimized binary format for tidy and large data (i.e. large tables) that is language-agnostic. It is widely used in the data science and corporate worlds, and the software ecosystem around it is sound and still growing. An overview of the characteristics of each format is in Table 1. We chose Parquet as the target format because it is optimized for cloud storage and cloud computing, its mature ecosystem includes packages in multiple coding languages to access it (Python, Julia, MATLAB, web technologies, etc.), and because the novel user is generally more familiar with tabular data and we want to make CrocoLake easily accessible from a technical standpoint too. Arguably, the main drawbacks of Parquet are that a large amount of workflows in ocean modeling are based on multidimensional data structures (not tabular) and that attaching attributes to the data can be clunky. At the same time, we see CrocoLake as one step in workflows that require fast access to point-based ocean observations, responding to necessities of data storage with fast access both on disk and the cloud, and not the end-all solution for ocean observations.
+
+Table 1. Comparison between different common file formats for oceanographic datasets.
+
+| Feature Name            | CSV       | netCDF    | Parquet     | ASCII      | JSON       | Zarr + Icechunk       |
+|-------------------------|-----------|-----------|-------------|------------|------------|-----------------------|
+| Cloud-Optimized         | No        | No        | Yes         | No         | No         | Yes                   |
+| Structure               | Tabular   | Array-based | Tabular   | Tabular    | Hierarchical | Array-based          |
+| Available tools in:     |           |           |             |            |            |                       |
+| Python                  | Yes       | Yes       | Yes         | Yes        | Yes        | Yes                   |
+| Julia                   | Yes       | Yes       | Yes         | Yes        | Yes        | Zarr only                    |
+| MATLAB                  | Yes       | Yes       | Yes         | Yes        | Yes        | Zarr only                    |
+| Attributes descriptors  | Dedicated columns, header | Dictionary, accessed with data | Dictionary, separate access from data | Dedicated column | Dedicated field in object | Dictionary, accessed with data |
+
+Another key difference between CrocoLakeTools and the other projects is that CrocoLakeTools is open-source and anyone can use it to build their own flavor of CrocoLake and contribute to it by adding converters to support new datasets.
+
 # Code architecture
 
 ## Converters
@@ -107,8 +134,8 @@ CrocoLake can be accessed with several programming languages with just a few lin
 ### Schema
 The nomenclature, units and data types are generally based on Argo's (https://vocab.nerc.ac.uk/collection/R03/current/). For CrocoLake's variables that are not present in the Argo program, we provide new names mantaining consistency with Argo's style.
 
-#### Profile numbering
-Ocean data is often accessed by profiles and we provide this functionality for CrocoLake too: the user can retrieve the profiles through the `CYCLE_NUMBER` variable, which is unique and progressive for each `PLATFORM_NUMBER` of each subdataset (`DB_NAME`). As each original product uses its own conventions, the `CYCLE_NUMBER` of some datasets is generated ad hoc during their conversion if no obvious match with `CYCLE_NUMBER` exists. The procedure for each dataset is explained in the online documentation.
+### Profile numbering
+Ocean data is often accessed by profiles and we provide this functionality for CrocoLake too: the user can retrieve the profiles through the `CYCLE_NUMBER` variable, which is unique and progressive for each `PLATFORM_NUMBER` of each subdataset (`DB_NAME`). As each original product uses its own conventions, the `CYCLE_NUMBER` of some datasets is generated ad hoc during their conversion if no obvious match with `CYCLE_NUMBER` exists. The procedure for each dataset is detailed in the online documentation.
 
 ### Quality control
 CrocoLake contains only quality-controlled measurements. We rely exclusively on the quality-controls performed by the data providers and at the time we do not perform any control ourselves (although this might change in the future). Each parameter `<PARAM>` has a corresponding `<PARAM>_QC` flag that is generally set to 1 to indicate that the data is reliable. For Argo measurements, the original QC value is preserved, and only measurements with QC values of 1, 2, 5, and 8 considered.
