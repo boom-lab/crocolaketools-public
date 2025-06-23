@@ -109,32 +109,35 @@ class ConverterSaildrones(Converter):
             # Assign depths based on known sensor installation depth from metadata
             depth_map = {
                 "TEMP_DEPTH_HALFMETER_MEAN": 0.5,
-                "TEMP_SBE37_MEAN": 1.7,
-                "O2_CONC_SBE37_MEAN": 1.7,
-                "SAL_SBE37_MEAN": 1.7,
-                "BKSCT_RED_MEAN": 1.9,
-                "CDOM_MEAN": 1.9,
-                "CHLOR_WETLABS_MEAN": 1.9,
+                "TEMP_SBE37_MEAN":           1.7,
+                "O2_CONC_SBE37_MEAN":        1.7,
+                "SAL_SBE37_MEAN":            1.7,
+                "BKSCT_RED_MEAN":            1.9,
+                "CDOM_MEAN":                 1.9,
+                "CHLOR_WETLABS_MEAN":        1.9,
             }
 
-            # Split data into depth-specific DataFrames for each variable
-            df_list = []
+            # Build depth-annotated DataFrames for each variable
             common_cols = ["time", "latitude", "longitude"]
+            depth_annotated_dfs = [
+                df[df[var].notna()][common_cols + [var]].assign(depth=depth)
+                for var, depth in depth_map.items() if var in df.columns
+            ]
 
-            for var_name, assigned_depth in depth_map.items():
-                if var_name in df.columns:
-                    temp_df = df[df[var_name].notna()].copy()
-                    if not temp_df.empty:
-                        # Create a new dataframe with common columns, the specific variable, and the assigned depth
-                        new_row_df = temp_df[common_cols + [var_name]].copy()
-                        new_row_df["depth"] = assigned_depth
-                        df_list.append(new_row_df)
+            # Combine the DataFrames and deduplicate
+            df_depth_annotated = pd.concat(depth_annotated_dfs, ignore_index=True)
+            df = df_depth_annotated.groupby(common_cols + ["depth"]).first().reset_index()
 
-            # Concatenate all the depth-specific dataframes
-            df_combined = pd.concat(df_list, ignore_index=True)
+            # Assign wmo_id from global attributes
+            df["wmo_id"] = ds.attrs["wmo_id"]
 
-            # For each unique (time, lat, lon, depth), keep the first non-null value per variable
-            df = df_combined.groupby(common_cols + ["depth"]).first().reset_index()
+            # Compute CYCLE_NUMBER (cycle 0 starts in 2017)
+            mission_start_year = pd.to_datetime(ds.time.min().item()).year
+            cycle_number = mission_start_year - 2017
+            # 2020 skipped due to mission pause
+            if mission_start_year >= 2021:
+                cycle_number += 1
+            df["CYCLE_NUMBER"] = cycle_number
 
         except Exception as e:
             print(f"Error reading file {input_fname}: {e}")
@@ -158,8 +161,6 @@ class ConverterSaildrones(Converter):
         Returns:
         df    -- pandas dataframe with standardized schema
         """
-
-        invars = invars + ["depth"]
 
         # Filter out rows where latitude or longitude are missing
         df = df[df["latitude"].notna() & df["longitude"].notna()]
