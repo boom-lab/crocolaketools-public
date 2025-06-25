@@ -84,7 +84,7 @@ Argovis [@tucker2020argovis] is a REST API and web application hosted at the Uni
 
 oce[@kelley2022oce] is a package written in R providing multiple functions to access oceanographic observations stored in a variety of formats. It focuses on datasets for physical oceanography with the goal of providing more tools in the future. argoFloats[@kelley2021argofloats] is a derived package that focuses on fetching and manipulating Argo data.
 
-The Ocean Data Platform [@hubocean_link] by the non-profit HUB Ocean is among the youngest projects in the community, and it allows to find and access datasets from a catalog. The user can interact with the platform through different interfaces (SDK, REST API, OQS, JupyterHub workspaces), loading the datasets in tabular format.
+The Ocean Data Platform by the non-profit HUB Ocean is among the youngest projects in the community, and it allows to find and access datasets from a catalog. The user can interact with the platform through different interfaces (SDK, REST API, OQS, JupyterHub workspaces), loading the datasets in tabular format.
 
 The above efforts often serve data in ASCII, CSV, JSON, or netCDF formats. For context, netCDF is a binary format that offers the advantage to be compact and efficient when dealing with multidimensional data, while the others have the advantage of being human-readable (but can be very inefficient for large datasets). None of these formats is optimized for cloud object storage, although there are ongoing efforts for netCDF (see Zarr and Icechunk). For this reason, Parquet has been drawing more and more attention from the earth sciences community recently.
 
