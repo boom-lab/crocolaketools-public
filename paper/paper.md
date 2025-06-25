@@ -153,7 +153,7 @@ CrocoLake contains only quality-controlled (QC) measurements. We rely exclusivel
 Each parameter `<PARAM>` has a corresponding `<PARAM>_ERROR` that indicates a measurement's error as provided in the original dataset. When no error is provided, `<PARAM>_ERROR` is set to null.
 
 ## Documentation and updates
-Documentation is available at (https://crocolakedocs.readthedocs.io/en/latest/index.html). It describes the specifics of each dataset (e.g. what quality-control filter we apply to each dataset, the procedure to generate the profile numbers, etc.), and get updated every time a new feature is made available.
+The [documentation](https://crocolakedocs.readthedocs.io/en/latest/index.html) describes the specifics of each dataset (e.g. what quality-control filter we apply to each dataset, the procedure to generate the profile numbers, etc.), and get updated every time a new feature is made available.
 
 ## Citation
 If you use CrocoLakeTools and/or CrocoLake, please do not limit yourself to citing this manuscript but also remember to cite the datasets that you have used as indicated in the documentation. For example, if your work relies on Argo measurements, acknowledge Argo [@wong2020argo]. This is important both for the maintainers of each product to track their impact and to acknowledge their efforts that made your work possible.
