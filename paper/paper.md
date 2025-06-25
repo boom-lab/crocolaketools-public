@@ -39,16 +39,15 @@ of measurements performed with multiple instruments by different research
 missions. The vast and variegated efforts have brought the community to define
 data storage conventions (e.g. CF-netCDF) and to assemble collections of
 datasets (e.g. the World Ocean Database). Yet, accessing these datasets often
-requires the usage of multiple tools, is inefficient over the cloud, and
-presents an overall high entrance barrier in terms of knowledge and time
-required to effectively access these resources. CrocoLakeTools is a Python
-package that addresses those shortcomings by providing workflows to convert
-several datasets from their original format to a uniform parquet dataset with a
-shared schema.
+requires the usage of specialized tools, is generally inefficient over the cloud, 
+and remains a major obstacle to new users in terms of pre-required knowledge and time. 
+CrocoLakeTools is a Python package that addresses those challenges by providing 
+workflows to convert various oceanographic datasets from their original format to 
+a uniform parquet dataset with a shared schema.
 
 # Statement of need
 `CrocoLakeTools` is a Python package to build workflows that convert ocean
-observations from different formats (e.g. netCDF, CSV) to parquet.
+observations from their original formats (e.g. netCDF, CSV) to parquet.
 CrocoLakeTools takes advantage of Python's well-established and growing ecosystem
 of open tools: it uses `dask`'s parallel computing capabilities to convert
 multiple files at once and to handle larger-than-memory data. `dask` is already
@@ -78,10 +77,15 @@ The most comprehensive project to date is likely the World Ocean Database (WOD),
 The International Quality-controlled Ocean Database (IQuOD) is an effort by the oceanographic community "with the goal of producing the highest quality and complete single ocean profile repository along with (intelligent) metadata and assigned uncertainties". It includes subsurface ocean profiles of several variables, paying particular attention to temperature measurements. The database is prepared by NCEI, and it is freely available in netCDF format through multiple channels (THREDDS, HTTPS, FTP). 
 
 Argovis is a REST API and web application hosted at the University of Colorado, Boulder (United States) and serving profile data in JSON format from the Argo program, and from ship and drifters missions. 
+#add argopy, R-oce, OceanRobots.jl/ArgoData.jl, CMEMS/Copernicus?
 
 The Ocean Data Platform by the non-profit HUB Ocean is among the youngest projects in the community, and it allows to find and access datasets from a catalog. The user can interact with the platform through different interfaces (SDK, REST API, OQS, JupyterHub workspaces), loading the datasets in tabular format.
 
-The above efforts serve the data in ASCII, CSV, netCDF, or JSON formats. Generally speaking, netCDF is a binary format that offers the advantage to be compact and efficient when dealing with multidimensional data, while the others have the advantage of being human-readable (but can be very inefficient for large datasets). None of them is optimized for cloud object storage, although efforts are ongoing for netCDF (see Zarr and Icechunk). For this reason, Parquet has been drawing more attention from the earth sciences community recently: Parquet is a cloud-optimized binary format for tidy and large data (i.e. large tables) that is language-agnostic. It is widely used in the data science and corporate worlds, and the software ecosystem around it is sound and still growing. An overview of the characteristics of each format is in Table 1. We chose Parquet as the target format because it is optimized for cloud storage and cloud computing, its mature ecosystem includes packages in multiple coding languages to access it (Python, Julia, MATLAB, web technologies, etc.), and because the novel user is generally more familiar with tabular data and we want to make CrocoLake easily accessible from a technical standpoint too. Arguably, the main drawbacks of Parquet are that a large amount of workflows in ocean modeling are based on multidimensional data structures (not tabular) and that attaching attributes to the data can be clunky. At the same time, we see CrocoLake as one step in workflows that require fast access to point-based ocean observations, responding to necessities of data storage with fast access both on disk and the cloud, and not the end-all solution for ocean observations.
+The above efforts often serve data in ASCII, CSV, JSON, or netCDF formats. For context, netCDF is a binary format that offers the advantage to be compact and efficient when dealing with multidimensional data, while the others have the advantage of being human-readable (but can be very inefficient for large datasets). None of these formats is optimized for cloud object storage, although there are ongoing efforts for netCDF (see Zarr and Icechunk). For this reason, Parquet has been drawing more and more attention from the earth sciences community recently.
+
+Parquet is a cloud-optimized binary format for tidy and large data (i.e. large tables) that is language-agnostic. It is widely used in the data science and corporate worlds, and the software ecosystem around it is sound, mature, and growing. An overview of the characteristics of each format is in Table 1. We chose Parquet as the target format for `CrocoLake` because (1) it is optimized for cloud storage and cloud computing, (2) its mature software ecosystem includes packages in multiple coding languages to access it (Python, Julia, MATLAB, web technologies, etc.), and (3)) novel users are generally more familiar with tabular data than to specialized oceanographic data formats.
+
+As we aim to make CrocoLake easily accessible from a technical standpoint, the main drawbacks of Parquet at present are that (1) many workflows in ocean modeling are based on multidimensional data structures (not tabular ones) and (2) attaching attributes to the data is not as straightfoward as it could be. However, we see CrocoLake as a major building bloc in workflows that require fast access to point-based ocean observations, responding to necessities of data storage with fast access both on disk and the cloud, rather than as an end-all solution for ocean observations.
 
 Table 1. Comparison between different common file formats for oceanographic datasets.
 
@@ -95,27 +99,27 @@ Table 1. Comparison between different common file formats for oceanographic data
 | MATLAB                  | Yes       | Yes       | Yes         | Yes        | Yes        | Zarr only                    |
 | Attributes descriptors  | Dedicated columns, header | Dictionary, accessed with data | Dictionary, separate access from data | Dedicated column | Dedicated field in object | Dictionary, accessed with data |
 
-Another key difference between CrocoLakeTools and the other projects is that CrocoLakeTools is open-source and anyone can use it to build their own flavor of CrocoLake and contribute to it by adding converters to support new datasets.
+Another key feature of CrocoLakeTools is that, unlike most aforementioned projects, it is fully open-source. Anyone can thus use CrocoLakeTools to build their own flavor of CrocoLake. We also welcome new contributors to CrocoLakeTools, for example by adding converters to support new datasets.
 
 # Code architecture
 
 ## Converters
 
-The core task of CrocoLakeTools is to take one or more files from a dataset and convert them to parquet, ensuring that CrocoLake's schema is followed. This is achieved through the methods contained in the `Converter` class and its subclasses. While the conversion of all datasets requires some general functionality (e.g. renaming the original variables to the final schema), each conversion requires specific tools for the specific dataset (e.g. the map used to rename the variables). CrocoLakeTools then contains the `Converter` class, which contains the methods shared across datasets, and from which converter subclasses inherit and implement the specific needs of each dataset.
+The core task of CrocoLakeTools is to take one or more files from a dataset and convert them to parquet, ensuring that CrocoLake's schema is followed. This is achieved through the methods contained in the `Converter` class and its subclasses. While the conversion of all datasets requires some general functionality (e.g. renaming the original variables to the final schema), each conversion requires specialized tools that differ betwee datasets (e.g. the map used to rename variables). CrocoLakeTools then contains the `Converter` class, which contains the methods shared across datasets, and from which converter subclasses inherit and implement the specific needs of each dataset.
 
 ## Workflow
 
 ### Local mirrors
-The first step in the workflow is to retrieve the original files  (\autoref{fig:workflow01}). The original sources follow the format, schema, nomenclature and conventions defined by the individual project (mission, scientist, etc.) the generated them and are unaware of CrocoLake's workflow. Modules to download the original data are optional. They should inherit from the `Downloader` class and be called `downloader<DatasetName>` (e.g. `downloaderArgoGDAC`). At the time of writing CrocoLakeTools is released with a downloader to build a local mirror of the Argo GDAC, and we hope to support more in the future. Whether a downloader module exists or the user downloads the data themselves, the original data is stored on disk and this is the starting point for the converter. 
+The first step in our workflow is to retrieve original files from each data provider (\autoref{fig:workflow01}). The original source data follow the format, schema, nomenclature, and conventions defined by their side (project, mission, scientist, etc.) independently of CrocoLake's workflow. Modules to download the original data are optional. They should inherit from the `Downloader` class and be called `downloader<DatasetName>` (e.g. `downloaderArgoGDAC`). At the time of writing CrocoLakeTools is released with a downloader to build a local mirror of the Argo GDAC, and we hope to support more data providers in the future. Whether a downloader module exists or the user downloads the data themselves, the original data is stored on disk and this is the starting point for the converter. 
 
 ### Parquet datasets
-The second step is to convert the data to parquet, and finally merge the datasets into CrocoLake (\autoref{fig:workflow02}). The core of `CrocoLakeTools` are the modules in the `Converter` class and its subclasses. Each original dataset has its own subclass called `converter<DatasetName>`, e.g. `converterGLODAP`; further specifiers can be added as necessary (e.g. at this time there a few different converters for Argo data to prepare different datasets). The need for a dedicated converter for each project despite the usage of common data formats (e.g. netCDF, CSV) is due to differences in the schema, e.g. variable names, units, etc.
+The second step is to convert the data to parquet, and finally merge the datasets into CrocoLake (\autoref{fig:workflow02}). The core of `CrocoLakeTools` are the modules in the `Converter` class and its subclasses. Each original dataset has its own subclass called `converter<DatasetName>`, e.g. `converterGLODAP`; further specifiers can be added as necessary (e.g. at this time there a few different converters for Argo data to prepare different datasets). The need for a dedicated converter for each project despite the usage of common data formats (e.g. netCDF, CSV) is due to differences in schema (e.g. variable names or units).
 Depending on the dataset, multiple converters can be applied. For example, to create CrocoLake, Argo data goes through two converters:
 1. `converterArgoGDAC`, which converts the original Argo GDAC preserving most of its original conventions;
 2. `converterArgoQC`, which takes the output of the previous step and applies some filtering based on Argo's QC flags and makes the data conforming to CrocoLake's schema.
 
 ### CrocoLake
-CrocoLake is one parquet dataset that contains each converted dataset merged together. This can be achieved with the script `merge_crocolake.py`. The script first creates a directory containing symbolic links to each converted dataset. It then uses the submodule `CrocoLakeLoader` to seamlessly load all the converted datasets into memory as one dask dataframe with a uniform schema and merge them into CrocoLake and stores it back to disk.
+CrocoLake is one parquet dataset that contains all converted datasets merged together. This can be achieved with the script `merge_crocolake.py`. The script first creates a directory containing symbolic links to each converted dataset. It then uses the submodule `CrocoLakeLoader` to seamlessly load all the converted datasets into memory as one dask dataframe with a uniform schema, merges them into CrocoLake, and stores it back to disk.
 
 CrocoLake can be accessed with several programming languages with just a few lines of codes: the submodules CrocoLake-Python, CrocoLake-Matlab, and CrocoLake-Julia contain tools and examples in some languages. 
 
@@ -128,7 +132,7 @@ CrocoLake can be accessed with several programming languages with just a few lin
 \begin{figure}[h!]
     \centering
     \includegraphics[width=\textwidth]{workflow_02.png}
-    \caption{CrocoLake's workflowL `converter`s. `converter`s read the data in their original format, transform it following CrocoLake's conventions, converts it to parquet, and stores it back to disk. Each dataset is converted to its own parquet version. Thanks to the submodule `CrocoLakeLoader`, multiple parquet datasets are merged into a uniform dataframe which is save to disk as CrocoLake. For each dataset, a version containing only physical variables (`PHY`) or also biogeochemical variables (`BGC`) can be generated. \label{fig:workflow02}}
+    \caption{CrocoLake's workflowL `converter`s. `converter`s read the data in their original format, transform it following CrocoLake's conventions, converts it to parquet, and stores it back to disk. Each dataset is converted to its own parquet version. Thanks to the submodule `CrocoLakeLoader`, multiple parquet datasets are merged into a uniform dataframe which is saved to disk as CrocoLake. For each dataset, a version containing only physical variables (`PHY`) or also biogeochemical variables (`BGC`) can be generated. \label{fig:workflow02}}
 \end{figure}
 
 ### Schema
@@ -138,20 +142,20 @@ The nomenclature, units and data types are generally based on Argo's (https://vo
 Ocean data is often accessed by profiles and we provide this functionality for CrocoLake too: the user can retrieve the profiles through the `CYCLE_NUMBER` variable, which is unique and progressive for each `PLATFORM_NUMBER` of each subdataset (`DB_NAME`). As each original product uses its own conventions, the `CYCLE_NUMBER` of some datasets is generated ad hoc during their conversion if no obvious match with `CYCLE_NUMBER` exists. The procedure for each dataset is detailed in the online documentation.
 
 ### Quality control
-CrocoLake contains only quality-controlled measurements. We rely exclusively on the quality-controls performed by the data providers and at the time we do not perform any control ourselves (although this might change in the future). Each parameter `<PARAM>` has a corresponding `<PARAM>_QC` flag that is generally set to 1 to indicate that the data is reliable. For Argo measurements, the original QC value is preserved, and only measurements with QC values of 1, 2, 5, and 8 considered.
+CrocoLake contains only quality-controlled (QC) measurements. We rely exclusively on QCs performed by the data providers and at the time we do not perform any additional QC ourselves (although this might change in the future). Each parameter `<PARAM>` has a corresponding `<PARAM>_QC` flag that is generally set to 1 to indicate that the data is reliable. For Argo measurements, the original QC value is preserved, and only measurements with QC values of 1, 2, 5, and 8 considered.
 
 ### Measurement errors
 Each parameter `<PARAM>` has a corresponding `<PARAM>_ERROR` that indicates a measurement's error as provided in the original dataset. When no error is provided, `<PARAM>_ERROR` is set to null.
 
 ## Documentation and updates
-Documentation is available at (https://crocolakedocs.readthedocs.io/en/latest/index.html). It describes the specifics of each dataset (e.g. what quality-control filter we apply to each dataset, the procedure to generate the profile numbers, etc.), and it is updated every time a new feature is available.
+Documentation is available at (https://crocolakedocs.readthedocs.io/en/latest/index.html). It describes the specifics of each dataset (e.g. what quality-control filter we apply to each dataset, the procedure to generate the profile numbers, etc.), and get updated every time a new feature is made available.
 
 ## Citation
-If you use CrocoLakeTools and/or CrocoLake, do not limit yourself to citing this manuscript and remember to cite the datasets that you have used as indicated in the documentation. For example, if your work relies on Argo measurements, acknowledge Argo [@wong2020argo]. This is important both for the maintainers of each product to track their impact and to acknowledge their efforts that made your work possible.
+If you use CrocoLakeTools and/or CrocoLake, please do not limit yourself to citing this manuscript but also remember to cite the datasets that you have used as indicated in the documentation. For example, if your work relies on Argo measurements, acknowledge Argo [@wong2020argo]. This is important both for the maintainers of each product to track their impact and to acknowledge their efforts that made your work possible.
 
 # Acknowledgements
 
-We acknowledge funding from [NSF CSSI CROCODILE details]
+We acknowledge funding from [NSF CSSI CROCODILE details] and [NASA ECCO NSC...].
 
 # References
 
