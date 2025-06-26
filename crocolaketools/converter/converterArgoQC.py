@@ -59,8 +59,6 @@ class ConverterArgoQC(Converter):
         if self.add_derived_vars:
             ddf_c = self.add_derived_variables(ddf_c)
 
-        #ddf_c = self.read_to_df(filenames)
-        #ddf_c = dd.from_map( self.read_to_df, [filenames] )
         ddf_c = ddf_c.repartition(partition_size="300MB")
         self.to_parquet(ddf_c)
 
@@ -292,8 +290,6 @@ class ConverterArgoQC(Converter):
 
             if len(filter_loc) > 0:
                 filters.append(filter_loc)
-
-        #filter_all = [ filter_adj_qc, filter_qc ]
 
         return filters, param_basenames
 
