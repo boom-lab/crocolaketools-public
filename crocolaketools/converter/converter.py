@@ -387,7 +387,7 @@ class Converter:
             elif p in ["LATITUDE","LONGITUDE"]:
                 f = pa.field( p, pa.float64() )
 
-            elif p=="JULD":
+            elif p in ['JULD','DATE_UPDATE']:
                 f = pa.field( p, pa.from_numpy_dtype(np.dtype("datetime64[ns]") ) )
 
             elif "DATA_MODE" in p or p=="DB_NAME":
@@ -612,7 +612,13 @@ class Converter:
         # note that the following only works if the wrapped LONGITUDE must be in [-180,180) range
         def modulo_longitude(df):
             # this turns 180 into -180
+            #
+            # not elegant but pyarrow backend does not support modulo operator
+            if df["LONGITUDE"].dtype == "float64[pyarrow]":
+                df["LONGITUDE"] = df["LONGITUDE"].astype("float64")
             df["LONGITUDE"] = (df["LONGITUDE"] - 180) % 360 - 180
+            if df["LONGITUDE"].dtype == "float64":
+                df["LONGITUDE"] = df["LONGITUDE"].astype("float64[pyarrow]")
             return df
 
         ddf = ddf.map_partitions(
