@@ -240,6 +240,9 @@ class ConverterSprayGliders(Converter):
                 ds = ds.drop_vars(["mission_name"])
                 invars.remove("mission_name")
                 df = ds[invars].to_dataframe()
+                df["date_update"] = pd.to_datetime(
+                    ds.attrs["date_created"]
+                )
 
         except Exception as e:
             print(f"Error reading file {input_fname}: {e}")

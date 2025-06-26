@@ -128,6 +128,8 @@ class ConverterGLODAP(Converter):
         )
         ddf = ddf.persist()
 
+        ddf['date_update'] = np.datetime64('2023-10-18T13:01:04.000000000')
+
         # return standardized dataframe
         return super().standardize_data(ddf)
 
