@@ -92,7 +92,7 @@ class ConverterSaildrones(Converter):
         """
 
         if lock is None:
-            lock = Lock()
+            warnings.warn("No lock provided. This might lead to concurrency or segmentation fault errors.")
 
         if filename is None:
             raise ValueError("No filename provided for Saildrone database.")
@@ -100,51 +100,57 @@ class ConverterSaildrones(Converter):
         input_fname = os.path.join(self.input_path, filename)
         print(f"Reading file: {input_fname}")
 
-        lock.acquire(timeout=600)
-        try:
-            with xr.open_dataset(input_fname, engine="netcdf4", cache=False) as ds:
-                invars = list(set(params.params["Saildrones"]) & set(ds.data_vars))
-                df = ds[invars].to_dataframe().reset_index()
+        # Hold lock for the entire NetCDF operation to prevent race conditions
+        with lock:
+            try:          
+                ds = xr.open_dataset(input_fname, engine="netcdf4", cache=False)
+                try:
+                    invars = list(set(params.params["Saildrones"]) & set(ds.data_vars))
+                    df = ds[invars].to_dataframe().reset_index()
+                    wmo_id = ds.attrs["wmo_id"]
+                    mission_start_year = pd.to_datetime(ds.time.min().item()).year
+                finally: # Ensure dataset is always closed
+                    ds.close()
+                    
+            except Exception as e:
+                print(f"Error reading file {input_fname}: {e}")
+                raise
 
-            # Assign depths based on known sensor installation depth from metadata
-            depth_map = {
-                "TEMP_DEPTH_HALFMETER_MEAN": 0.5,
-                "TEMP_SBE37_MEAN":           1.7,
-                "O2_CONC_SBE37_MEAN":        1.7,
-                "SAL_SBE37_MEAN":            1.7,
-                "BKSCT_RED_MEAN":            1.9,
-                "CDOM_MEAN":                 1.9,
-                "CHLOR_WETLABS_MEAN":        1.9,
-            }
+        # Assign depths based on known sensor installation depth from metadata
+        depth_map = {
+            "TEMP_SBE37_MEAN": 1.7, 
+            "TEMP_CTD_MEAN": 0.6,
+            "O2_CONC_SBE37_MEAN": 1.7, 
+            "O2_CONC_MEAN": 0.6,
+            "SAL_SBE37_MEAN": 1.7, 
+            "SAL_MEAN": 0.6,
+            "TEMP_DEPTH_HALFMETER_MEAN": 0.5, 
+            "CHLOR_WETLABS_MEAN": 1.9, 
+            "CHLOR_MEAN": 0.25,
+            "BKSCT_RED_MEAN": 1.9, 
+            "CDOM_MEAN": 1.9, 
+        }
 
-            # Build depth-annotated DataFrames for each variable
-            common_cols = ["time", "latitude", "longitude"]
-            depth_annotated_dfs = [
-                df[df[var].notna()][common_cols + [var]].assign(depth=depth)
-                for var, depth in depth_map.items() if var in df.columns
-            ]
+        # Build depth-annotated DataFrames for each variable
+        common_cols = ["time", "latitude", "longitude"]
+        depth_annotated_dfs = [
+            df[df[var].notna()][common_cols + [var]].assign(depth=depth)
+            for var, depth in depth_map.items() if var in df.columns
+        ]
 
-            # Combine the DataFrames and deduplicate
-            df_depth_annotated = pd.concat(depth_annotated_dfs, ignore_index=True)
-            df = df_depth_annotated.groupby(common_cols + ["depth"]).first().reset_index()
+        # Combine the DataFrames and deduplicate
+        df_depth_annotated = pd.concat(depth_annotated_dfs, ignore_index=True)
+        df = df_depth_annotated.groupby(common_cols + ["depth"]).first().reset_index()
 
-            # Assign wmo_id from global attributes
-            df["wmo_id"] = ds.attrs["wmo_id"]
+        # Assign wmo_id from global attributes
+        df["wmo_id"] = wmo_id
 
-            # Compute CYCLE_NUMBER (cycle 0 starts in 2017)
-            mission_start_year = pd.to_datetime(ds.time.min().item()).year
-            cycle_number = mission_start_year - 2017
-            # 2020 skipped due to mission pause
-            if mission_start_year >= 2021:
-                cycle_number += 1
-            df["CYCLE_NUMBER"] = cycle_number
-
-        except Exception as e:
-            print(f"Error reading file {input_fname}: {e}")
-            raise
-
-        finally: # always release lock in case of error in try block
-            lock.release()
+        # Compute CYCLE_NUMBER (cycle 0 starts in 2017)
+        cycle_number = mission_start_year - 2017
+        # 2020 skipped due to mission pause
+        if mission_start_year >= 2021:
+            cycle_number += 1
+        df["CYCLE_NUMBER"] = cycle_number
 
         return df, invars
 
@@ -196,7 +202,7 @@ class ConverterSaildrones(Converter):
         df["PRES"] = df["PRES"].astype("float32[pyarrow]")
 
         # Merge temperature readings from multiple sensors into a unified 'TEMP' column.
-        temp_sources = ["TEMP_SBE37_MEAN", "TEMP_DEPTH_HALFMETER_MEAN"]
+        temp_sources = ["TEMP_SBE37_MEAN", "TEMP_DEPTH_HALFMETER_MEAN", "TEMP_CTD_MEAN"]
         existing_temp_sources = [col for col in temp_sources if col in df.columns]
         df["TEMP"] = df[existing_temp_sources].bfill(axis=1).iloc[:, 0]
 
@@ -224,6 +230,7 @@ class ConverterSaildrones(Converter):
         if isinstance(filenames, str):
             filenames = [filenames]
 
+        lock = Lock()
         # Handle single file to compute delayed results
         if len(filenames) == 1:
             print("Reading single file")
