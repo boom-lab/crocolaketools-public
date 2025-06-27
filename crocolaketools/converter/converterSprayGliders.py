@@ -154,16 +154,22 @@ class ConverterSprayGliders(Converter):
         # acquire lock to avoid concurrency issues on ds
         lock.acquire(timeout=600)
 
-        # load into memory the slice of ds that corresponds to chunk
-        ds_tmp = ds.isel(profile=slice(chunk_init, chunk_end)).compute()
+        try:
+            # load into memory the slice of ds that corresponds to chunk
+            ds_tmp = ds.isel(profile=slice(chunk_init, chunk_end)).compute()
 
-        # store slice to netCDF file
-        ds_tmp.to_netcdf(
-            chunk_filepath,
-            engine="netcdf4"
-        )
+            # store slice to netCDF file
+            ds_tmp.to_netcdf(
+                chunk_filepath,
+                engine="netcdf4"
+            )
 
-        lock.release()
+        except Exception as e:
+            print(f"Error writing file {chunk_filepath}: {e}")
+            raise
+
+        finally: # always release lock in case of error in try block
+            lock.release()
 
         return
 
@@ -234,6 +240,9 @@ class ConverterSprayGliders(Converter):
                 ds = ds.drop_vars(["mission_name"])
                 invars.remove("mission_name")
                 df = ds[invars].to_dataframe()
+                df["date_update"] = pd.to_datetime(
+                    ds.attrs["date_created"]
+                )
 
         except Exception as e:
             print(f"Error reading file {input_fname}: {e}")
