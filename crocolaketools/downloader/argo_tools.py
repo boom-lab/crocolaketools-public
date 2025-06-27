@@ -74,8 +74,15 @@ def argo_gdac(gdac_path='./', dataset="bgc", lat_range=None,lon_range=None,start
           all_local_fnames: (optional) list of paths to the downloaded *_prof or *_Sprof files
     """
 
-    print("gdac_path in at:")
+    if dryrun and not checktime:
+        print("Even if you selected dryrun, the GDAC index file is going to be "
+        "updated to get the most recent data: this might take a while as the "
+        "index file is more than 200 MB large.")
+        print("If you want to skip updating the index, set checktime=False.")
+
+    print("gdac_path:")
     print(gdac_path)
+    dataset = dataset.lower()
     if dataset=="bgc":
         gdac_name = 'argo_synthetic-profile_index.txt'
     elif dataset=="phy":
@@ -83,18 +90,17 @@ def argo_gdac(gdac_path='./', dataset="bgc", lat_range=None,lon_range=None,start
     else:
         raise ValueError('Dataset variable must be set to bgc or phy.')
 
-    if not os.path.exists(gdac_path + gdac_name):
-        print(gdac_name + ' not found in ' + gdac_path + '. Downloading it.')
-
+    gdac_file = os.path.join(gdac_path, gdac_name)
+    if not os.path.isfile( gdac_file ):
+        print(gdac_name + ' not found in ' + gdac_path + '. Downloading it if dryrun set to false.')
         Path(gdac_path).mkdir(parents = True, exist_ok = True)
-        
-        gdac_url  = 'https://usgodae.org/pub/outgoing/argo/'
 
+    if not dryrun:
+        gdac_url  = 'https://usgodae.org/pub/outgoing/argo/'
         args = (gdac_url,gdac_name,gdac_path,True,verbose,checktime,None)
         download_file(args)
 
   # Load index file into Pandas DataFrame
-    gdac_file = gdac_path+gdac_name
     gdac_index = pd.read_csv(
         gdac_file,
         delimiter=',',
@@ -213,7 +219,7 @@ def argo_gdac(gdac_path='./', dataset="bgc", lat_range=None,lon_range=None,start
                         print('Limiting to 100 processors.')
                         NPROC = 100
                     if NPROC > nb_to_download:
-                        NPROC = nb_to_download
+                        NPROC = max( [nb_to_download, 1] )
                         print('More processors than files requested, limiting NPROC to number of files.')
 
 
@@ -234,9 +240,23 @@ def argo_gdac(gdac_path='./', dataset="bgc", lat_range=None,lon_range=None,start
 
         if (not dryrun) and verbose: print("All requested files have been downloaded.")
 
+        if dryrun:
+            existing_fnames = [path for path in all_local_fnames if os.path.exists(path)]
+            if verbose:
+                print("Dryrun: no files are downloaded. The following files are"
+                " already on disk and this list will be returned:")
+                print(existing_fnames)
+                # print("Dryrun: no files are downloaded. The following files are"
+                # " not on disk and would be downloaded if dryrun=False (the files"
+                # " in the previous list might be updated too):")
+                # print(all_local_fnames)
+
+            return wmoids, gdac_index_subset, existing_fnames
+
         return wmoids, gdac_index_subset, all_local_fnames
 
     else:
+
         return wmoids, gdac_index_subset
 
 #------------------------------------------------------------------------------#

@@ -18,10 +18,14 @@ terminal_width = shutil.get_terminal_size().columns
 import dask.dataframe as dd
 from dask.distributed import Client
 import pandas as pd
+import pyarrow as pa
+import pyarrow.parquet as pq
 import pytest
+import xarray as xr
 
 from crocolaketools.converter.converterSprayGliders import ConverterSprayGliders
 from crocolaketools.converter.converterArgoQC import ConverterArgoQC
+from crocolaketools.converter.converterGLODAP import ConverterGLODAP
 from crocolaketools.converter.converterCPR import ConverterCPR
 from crocolakeloader import params
 
@@ -885,6 +889,109 @@ class TestConverter:
 
         client.shutdown()
 
+    def test_converter_spraygliders_prepare_tmp(self):
+        """Test that SprayGliders conversion executes; this test does not use
+        convert() but its internal steps to check the dataframe is never empty
+        """
+        client = Client(
+            threads_per_worker=2,
+            n_workers=1,
+            memory_limit='100GB',
+            dashboard_address=':8787',
+        )
+
+        spray_path = "/vortexfs1/share/boom/users/enrico.milanese/originalDatabases/SprayGliders/"
+        outdir_spray_pqt = "./tmp_pqt/" # this should not be used in this test actually
+        tmp_nc_path = "./tmp_nc_chunks/"
+
+        if os.path.isdir(tmp_nc_path):
+            raise ValueError("tmp_nc_path already exists, please remove it before running the test.")
+
+        spray_files = glob.glob(os.path.join(spray_path, '*.nc'))
+        spray_names = [os.path.basename(f) for f in spray_files]
+        print("spray_names:")
+        print(spray_names)
+
+        converterSG = ConverterSprayGliders(
+            db = "SprayGliders",
+            db_type="PHY",
+            input_path = spray_path,
+            outdir_pq = outdir_spray_pqt,
+            outdir_schema = './schemas/SprayGliders/',
+            fname_pq = 'test_1200_PHY_SPRAY-DEV',
+            tmp_path = tmp_nc_path
+        )
+
+        from dask.distributed import Lock
+        lock=Lock()
+
+        # select three random files to test
+        flist = random.sample(spray_names, k=3)
+        print(f"Testing with {len(flist)} of {len(spray_names)} files")
+        print("flist:")
+        print(flist)
+
+        converterSG.prepare_data(flist=flist,lock=lock)
+
+        not_empty_dir = bool(os.listdir(tmp_nc_path))
+        assert not_empty_dir == True
+
+        for file in glob.glob(tmp_nc_path+"/*.nc"):
+            try:
+                ds = xr.open_dataset(file, engine="h5netcdf", chunks=None, cache=True)
+            except Exception as e:
+                assert False, f"Failed to open file {file}: {e}"
+        assert True
+
+        client.shutdown()
+
+    def test_converter_spraygliders_read_to_ddf_phy(self):
+        """Test that SprayGliders conversion executes; this test does not use
+        convert() but its internal steps to check the dataframe is never empty
+        """
+        client = Client(
+            threads_per_worker=20,
+            n_workers=1,
+            memory_limit='100GB',
+            dashboard_address=':1419',
+        )
+        print("Dashboard address:")
+        print(client.dashboard_link)
+
+        spray_path = "/vortexfs1/share/boom/users/enrico.milanese/crocolaketools-public-fork/crocolaketools/test/tmp_nc_chunks/"
+        outdir_spray_pqt = "./tmp_pqt/" # this should not be used in this test actually
+        tmp_nc_path = "./tmp_nc_chunks/"
+
+        spray_files = glob.glob(os.path.join(spray_path, '*.nc'))
+        spray_names = [os.path.basename(f) for f in spray_files]
+        print("spray_names:")
+        print(spray_names)
+
+        converterSG = ConverterSprayGliders(
+            db = "SprayGliders",
+            db_type="PHY",
+            input_path = spray_path,
+            outdir_pq = outdir_spray_pqt,
+            outdir_schema = './schemas/SprayGliders/',
+            fname_pq = 'test_1200_PHY_SPRAY-DEV'
+        )
+
+        from dask.distributed import Lock
+        lock=Lock()
+
+        flist = spray_names
+        print(f"Testing with {len(flist)} of {len(spray_names)} files")
+        print("flist:")
+        print(flist)
+
+        converterSG.convert(
+            filenames=flist
+        )
+
+        client.shutdown()
+
+        return
+
     def test_converter_cpr_read_to_df(self):
         """
         Test that the CPR CSV file is correctly read into a pandas DataFrame.
@@ -978,3 +1085,61 @@ class TestConverter:
         assert "LATITUDE" in df.columns
         assert "LONGITUDE" in df.columns
         assert "JULD" in df.columns
+
+    def test_converter_wrap_longitude(self):
+        import numpy as np
+
+        for j in range(2):
+            if j==0:
+                lon_list = [-70.00, 70.00, -181.10,  181.10, 0.,  180]
+                solution = [-70.00, 70.00,  178.90, -178.90, 0., -180]
+            else:
+                lon_list = [359,  360]
+                solution = [179, -180]
+            data = {
+                'LATITUDE': list(np.random.rand(len(lon_list))*180-90),
+                'LONGITUDE': lon_list,
+                'PSAL': list(np.random.rand(len(lon_list))+1),
+                'PRES': list(np.random.rand(len(lon_list))*1000),
+                'TEMP': list(np.random.rand(len(lon_list))*5+15),
+            }
+            pdf = pd.DataFrame(data)
+            ddf = dd.from_pandas(pdf, npartitions=2)
+            print("input data:")
+            print(pdf)
+
+            sol_df = pdf.copy()
+            sol_df["LONGITUDE"] = solution
+
+            # we need an instance of ConverterGLODAP to access the _wrap_longitude
+            # method
+            config = {
+                'db': 'GLODAP',
+                'db_type': 'PHY',
+                'input_path': "./",
+                'outdir_pq': "./",
+                'outdir_schema': "./",
+                'fname_pq': "test",
+                'add_derived_vars': True,
+                'overwrite': False,
+            }
+            ConverterPHY = ConverterGLODAP(config)
+
+            if j==0:
+                pdf = ConverterPHY._wrap_longitude(pdf)
+                ddf = ConverterPHY._wrap_longitude(ddf).compute()
+            else:
+                pdf = ConverterPHY._wrap_longitude(
+                    pdf,
+                    shift_range=True,
+                )
+                ddf = ConverterPHY._wrap_longitude(ddf,shift_range=True).compute()
+
+            print("solution:")
+            print(sol_df)
+            print("pdf[LONGITUDE]:")
+            print(pdf["LONGITUDE"])
+            print("ddf[LONGITUDE]:")
+            print(ddf["LONGITUDE"])
+            pd.testing.assert_frame_equal(pdf, sol_df)
+            pd.testing.assert_frame_equal(ddf, sol_df)

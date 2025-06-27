@@ -22,9 +22,19 @@ setup(
             'crocolaketools = scripts.main:main',
             'argo2argoqc_phy = scripts.argo2argoqc_phy:main',
             'argo2argoqc_bgc = scripts.argo2argoqc_bgc:main',
-            'glodap2parquet = scripts.glodap2parquet:glodap2parquet',
-            'spray2parquet = scripts.spray2parquet:spray2parquet',
+            'glodap2parquet = scripts.glodap2parquet:main',
+            'spray2parquet = scripts.spray2parquet:main',
             'argogdac2parquet = scripts.argogdac2parquet:argogdac2parquet',
+            'merge_crocolake = scripts.merge_crocolake:main',
+            'download_demo_data = scripts.download_demo_data:main',
         ],
     },
+    include_package_data=True,
+    package_data={
+        "crocolaketools": [
+            "config/config.yaml",
+            "config/config_cluster.yaml",
+            "config/generate_crocolake_symlinks.sh",
+        ]
+    }
 )

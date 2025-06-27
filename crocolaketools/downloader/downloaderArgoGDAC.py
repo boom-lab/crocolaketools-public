@@ -52,7 +52,7 @@ class DownloaderArgoGDAC(Downloader):
         for k in range(len(db_names)):
             start_time = time.time()
 
-            db_name = db_names[k]
+            db_name = db_names[k].upper()
             print("Database " + db_name + "...")
 
             wmos, metadata, wmos_fp = at.argo_gdac(
@@ -65,13 +65,13 @@ class DownloaderArgoGDAC(Downloader):
                 overwrite_profiles=True,
                 NPROC=nproc,
                 verbose=True,
-                checktime=True
+                checktime=dryrun_flag
             )
 
-            if db_name=="phy":
+            if db_name=="PHY":
                 wmos_fp_phy = copy.deepcopy(wmos_fp)
                 metadata_phy = metadata
-            elif db_name=="bgc":
+            elif db_name=="BGC":
                 wmos_fp_bgc = copy.deepcopy(wmos_fp)
                 metadata_bgc = metadata
 

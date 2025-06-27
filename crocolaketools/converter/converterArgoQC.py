@@ -33,10 +33,17 @@ class ConverterArgoQC(Converter):
     # Constructors/Destructors                                           #
     # ------------------------------------------------------------------ #
 
-    def __init__(self, db=None, db_type=None, input_path=None, outdir_pq=None, outdir_schema=None, fname_pq=None, add_derived_vars=False, overwrite=False):
-        if not db == "ARGO":
+    def __init__(self, config=None, db_type=None):
+
+        if config is not None and not config['db'] == "ARGO":
             raise ValueError("Database must be ARGO.")
-        Converter.__init__(self, db, db_type, input_path, outdir_pq, outdir_schema, fname_pq, add_derived_vars, overwrite)
+        elif ((config is None) and (db_type is not None)):
+            config = {
+                'db': 'ARGO',
+                'db_type': db_type.upper(),
+            }
+
+        Converter.__init__(self, config)
 
     # ------------------------------------------------------------------ #
     # Methods                                                            #
@@ -52,8 +59,6 @@ class ConverterArgoQC(Converter):
         if self.add_derived_vars:
             ddf_c = self.add_derived_variables(ddf_c)
 
-        #ddf_c = self.read_to_df(filenames)
-        #ddf_c = dd.from_map( self.read_to_df, [filenames] )
         ddf_c = ddf_c.repartition(partition_size="300MB")
         self.to_parquet(ddf_c)
 
@@ -144,30 +149,20 @@ class ConverterArgoQC(Converter):
                     meta[p] = "float32[pyarrow]"
 
         # keep best values for each parameter
-        for param in self.param_basenames:
-            if self.db_type == "BGC":
-                data_mode_col = param+"_DATA_MODE"
-            ddf = ddf.map_partitions(self.keep_best_values, param, data_mode_col)#, meta=meta)
+        ddf = ddf.map_partitions(self.keep_best_values, self.param_basenames, self.db_type)
 
         # remove extra columns
-        cols_to_drop = []
-        for param in self.param_basenames:
-            to_drop_adj = param+"_ADJUSTED"
-            to_drop_adj_qc = param+"_ADJUSTED_QC"
-            to_drop_adj_err = param+"_ADJUSTED_ERROR"
-            if to_drop_adj in ddf.columns:
-                cols_to_drop.append(to_drop_adj)
-            if to_drop_adj_qc in ddf.columns:
-                cols_to_drop.append(to_drop_adj_qc)
-            if to_drop_adj_err in ddf.columns:
-                cols_to_drop.append(to_drop_adj_err)
+        cols_to_drop = [f"{param}{suffix}"
+                        for param in self.param_basenames
+                        for suffix in ["_ADJUSTED", "_ADJUSTED_QC", "_ADJUSTED_ERROR"]
+                        if f"{param}{suffix}" in ddf.columns]
         ddf = ddf.drop(columns=cols_to_drop)
 
         # keep only rows with good POSITION_QC and JULD_QC
         ddf = ddf.map_partitions(self.keep_pos_juld_best_values, self.param_basenames)
 
         # remove rows with only NAs
-        ddf = ddf.map_partitions(self.remove_all_NAs, self.param_basenames)#, meta=ddf)
+        ddf = ddf.map_partitions(super().remove_all_NAs, self.param_basenames)
 
         # add database name if not present
         if "DB_NAME" not in ddf.columns:
@@ -177,23 +172,21 @@ class ConverterArgoQC(Converter):
 
         # convert DATA_MODEs to categorical
         categories_dm = pd.Series(["R","A","D"], dtype='string[pyarrow]')
-        for col in ddf.columns:
-            if "DATA_MODE" in col:
-                ddf[col] = ddf[col].astype(pd.CategoricalDtype(categories=categories_dm, ordered=False))
+        data_mode_columns = [col for col in ddf.columns if "DATA_MODE" in col]
+        ddf[data_mode_columns] = ddf[data_mode_columns].astype(pd.CategoricalDtype(categories=categories_dm, ordered=False))
 
         return ddf
 
 #------------------------------------------------------------------------------#
 ## Keep best values for each row
-    def keep_best_values(self,df,param,data_mode_col):
-    # def keep_best_values(self,row,param,data_mode_col):
+    def keep_best_values(self, df, param_basenames, db_type):
         """Keep the best observation available for each row
 
         Arguments:
         df    --  a row of a pandas dataframe containing Argo observations
-        param -- base name of the parameter to keep (i.e. <PARAM> in Argo
-                      convetion)
-        data_mode_col -- data mode for param
+        param_basename -- base name of the parameters to keep (i.e. <PARAM> in Argo
+                          convention)
+        db_type -- database type, either "PHY" or "BGC"
 
         Returns:
         df  --  updated dataframe
@@ -201,31 +194,33 @@ class ConverterArgoQC(Converter):
 
         # PHY has one DATA_MODE variable for all variables of each row
         # BGC has one DATA_MODE variable for each variable of each row
-        #row_data_mode = row[data_mode_col]
 
         # Find good QC values
-        condition_1 = ( ~df[param+"_ADJUSTED"].isna() ) & ( df[param + "_ADJUSTED_QC"].isin([1, 2, 5, 8]) ) & ( df[data_mode_col].isin(["A", "D"]) )
-        condition_2 = ( ~df[param].isna() ) & ( df[param+"_QC"].isin([1, 2, 5, 8]) ) & (df[data_mode_col] == "R")
-        condition_3 = ~(condition_1 | condition_2)
+        for param in param_basenames:
+            data_mode_col = param + "_DATA_MODE" if db_type == "BGC" else "DATA_MODE"
 
-        # Keep best values reducing the number of columns
-        df.loc[condition_1, param] = df.loc[condition_1, param+"_ADJUSTED"]
-        df.loc[condition_1, param+"_QC"] = df.loc[condition_1, param+"_ADJUSTED_QC"]
-        df.loc[condition_1, param+"_ERROR"] = df.loc[condition_1, param+"_ADJUSTED_ERROR"]
+            condition_1 = ( ~df[param+"_ADJUSTED"].isna() ) & ( df[param + "_ADJUSTED_QC"].isin([1, 2, 5, 8]) ) & ( df[data_mode_col].isin(["A", "D"]) )
+            condition_2 = ( ~df[param].isna() ) & ( df[param+"_QC"].isin([1, 2, 5, 8]) ) & (df[data_mode_col] == "R")
+            condition_3 = ~(condition_1 | condition_2)
 
-        # Fill param columns with NA values otherwise
-        df.loc[condition_2, param+"_ERROR"] = pd.NA
-        df.loc[condition_3, param] = pd.NA
-        df.loc[condition_3, param+"_QC"] = pd.NA
-        df.loc[condition_3, param+"_ERROR"] = pd.NA
+            # Keep best values reducing the number of columns
+            df.loc[condition_1, param] = df.loc[condition_1, param+"_ADJUSTED"]
+            df.loc[condition_1, param+"_QC"] = df.loc[condition_1, param+"_ADJUSTED_QC"]
+            df.loc[condition_1, param+"_ERROR"] = df.loc[condition_1, param+"_ADJUSTED_ERROR"]
 
-        # Convert columns to the right type
-        if df[param].dtypes != "float32[pyarrow]":
-            df[param] = df[param].astype("float32[pyarrow]")
-        if df[param+"_QC"].dtypes != "uint8[pyarrow]":
-            df[param+"_QC"] = df[param+"_QC"].astype("uint8[pyarrow]")
-        if df[param+"_ERROR"].dtypes != "float32[pyarrow]":
-            df[param+"_ERROR"] = df[param+"_ERROR"].astype("float32[pyarrow]")
+            # Fill param columns with NA values otherwise
+            df.loc[condition_2, param+"_ERROR"] = pd.NA
+            df.loc[condition_3, param] = pd.NA
+            df.loc[condition_3, param+"_QC"] = pd.NA
+            df.loc[condition_3, param+"_ERROR"] = pd.NA
+
+            # Convert columns to the right type
+            if df[param].dtypes != "float32[pyarrow]":
+                df[param] = df[param].astype("float32[pyarrow]")
+            if df[param+"_QC"].dtypes != "uint8[pyarrow]":
+                df[param+"_QC"] = df[param+"_QC"].astype("uint8[pyarrow]")
+            if df[param+"_ERROR"].dtypes != "float32[pyarrow]":
+                df[param+"_ERROR"] = df[param+"_ERROR"].astype("float32[pyarrow]")
 
         return df
 
@@ -248,29 +243,6 @@ class ConverterArgoQC(Converter):
         # Fill whole row with NA values if POSITION_QC or JULD_QC are not good
         # (rows with all NAs will be removed later)
         df.loc[~condition_pos_juld, cols_used] = pd.NA
-
-        return df
-
-#------------------------------------------------------------------------------#
-## Remove row if all measurements are NA
-    def remove_all_NAs(self,df,cols_to_check):
-        """Remove rows with all NA values
-
-        Arguments:
-        df  --  dataframe (needed to use this function with dd.map_partitions)
-
-        Returns:
-        df -- dataframe with rows removed
-        """
-
-        condition_na = df[ cols_to_check ].isna().all(axis="columns")
-        df = df.loc[~condition_na]
-        df.reset_index(drop=True, inplace=True)
-
-        # print("Removed ", condition_na.sum(), " rows with all NA values")
-        # print("df:")
-        # with pd.option_context('display.max_columns', None):
-        #     print(df)
 
         return df
 
@@ -318,8 +290,6 @@ class ConverterArgoQC(Converter):
 
             if len(filter_loc) > 0:
                 filters.append(filter_loc)
-
-        #filter_all = [ filter_adj_qc, filter_qc ]
 
         return filters, param_basenames
 
