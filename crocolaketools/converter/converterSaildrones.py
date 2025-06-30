@@ -118,17 +118,22 @@ class ConverterSaildrones(Converter):
 
         # Assign depths based on known sensor installation depth from metadata
         depth_map = {
-            "TEMP_SBE37_MEAN": 1.7, 
-            "TEMP_CTD_MEAN": 0.6,
-            "O2_CONC_SBE37_MEAN": 1.7, 
-            "O2_CONC_MEAN": 0.6,
-            "SAL_SBE37_MEAN": 1.7, 
-            "SAL_MEAN": 0.6,
+            "TEMP_CTD_MEAN":             0.6,
+            "TEMP_SBE37_MEAN":           1.7, 
             "TEMP_DEPTH_HALFMETER_MEAN": 0.5, 
-            "CHLOR_WETLABS_MEAN": 1.9, 
-            "CHLOR_MEAN": 0.25,
-            "BKSCT_RED_MEAN": 1.9, 
-            "CDOM_MEAN": 1.9, 
+            "O2_CONC_MEAN":              0.6,
+            "O2_RBR_CONC_MEAN":          0.53,
+            "O2_CONC_RBR_MEAN":          0.53,
+            "O2_CONC_SBE37_MEAN":        1.7, 
+            "O2_CONC_UNCOR_MEAN":        0.6,
+            "SAL_MEAN":                  0.6,
+            "SAL_RBR_MEAN":              0.53,
+            "SAL_SBE37_MEAN":            1.7, 
+            "CHLOR_MEAN":                0.25,
+            "CHLOR_RBR_MEAN":            0.53,
+            "CHLOR_WETLABS_MEAN":        1.9, 
+            "CDOM_MEAN":                 1.9, 
+            "BKSCT_RED_MEAN":            1.9, 
         }
 
         # Build depth-annotated DataFrames for each variable
@@ -202,7 +207,7 @@ class ConverterSaildrones(Converter):
         df["PRES"] = df["PRES"].astype("float32[pyarrow]")
 
         # Merge temperature readings from multiple sensors into a unified 'TEMP' column.
-        temp_sources = ["TEMP_SBE37_MEAN", "TEMP_DEPTH_HALFMETER_MEAN", "TEMP_CTD_MEAN"]
+        temp_sources = ["TEMP_SBE37_MEAN", "TEMP_DEPTH_HALFMETER_MEAN", "TEMP_CTD_MEAN", "TEMP_CTD_RBR_MEAN"]
         existing_temp_sources = [col for col in temp_sources if col in df.columns]
         df["TEMP"] = df[existing_temp_sources].bfill(axis=1).iloc[:, 0]
 
