@@ -21,6 +21,7 @@ import pandas as pd
 from pandas import ArrowDtype
 import pyarrow as pa
 import xarray as xr
+from collections import defaultdict
 from crocolakeloader import params
 from crocolaketools.converter.converter import Converter
 ##########################################################################
@@ -118,19 +119,25 @@ class ConverterSaildrones(Converter):
 
         # Assign depths based on known sensor installation depth from metadata
         depth_map = {
-            "TEMP_CTD_MEAN":             0.6,
-            "TEMP_SBE37_MEAN":           1.7, 
-            "TEMP_DEPTH_HALFMETER_MEAN": 0.5, 
-            "O2_CONC_MEAN":              0.6,
-            "O2_RBR_CONC_MEAN":          0.53,
-            "O2_CONC_SBE37_MEAN":        1.7, 
-            "O2_CONC_UNCOR_MEAN":        0.6,
-            "SAL_MEAN":                  0.6,
-            "SAL_SBE37_MEAN":            1.7, 
-            "CHLOR_MEAN":                0.25,
-            "CHLOR_WETLABS_MEAN":        1.9, 
-            "CDOM_MEAN":                 1.9, 
-            "BKSCT_RED_MEAN":            1.9, 
+            "TEMP_CTD_MEAN":               0.6,
+            "TEMP_CTD_RBR_MEAN":           0.53,
+            "TEMP_SBE37_MEAN":             1.7, 
+            "TEMP_DEPTH_HALFMETER_MEAN":   0.5, 
+            "O2_CONC_MEAN":                0.6,
+            "O2_RBR_CONC_MEAN":            0.53,
+            "O2_CONC_RBR_MEAN":            0.53,
+            "O2_CONC_SBE37_MEAN":          1.7, 
+            "O2_CONC_UNCOR_MEAN":          0.6,
+            "O2_AANDERAA_CONC_UNCOR_MEAN": 0.6,
+            "O2_CONC_AANDERAA_MEAN":       0.6,
+            "SAL_MEAN":                    0.6,
+            "SAL_RBR_MEAN":                0.53,
+            "SAL_SBE37_MEAN":              1.7, 
+            "CHLOR_MEAN":                  0.25,
+            "CHLOR_RBR_MEAN":              0.53,
+            "CHLOR_WETLABS_MEAN":          1.9, 
+            "CDOM_MEAN":                   1.9, 
+            "BKSCT_RED_MEAN":              1.9, 
         }
 
         # Build depth-annotated DataFrames for each variable
@@ -173,6 +180,18 @@ class ConverterSaildrones(Converter):
         # Filter out rows where latitude or longitude are missing
         df = df[df["latitude"].notna() & df["longitude"].notna()]
 
+        # Group source columns by target variable: CROCOLAKE_VAR -> [SENSOR_VAR_1, SENSOR_VAR_2, ...]
+        reverse_map = defaultdict(list)
+        for sensor_var, croco_var in params.params["Saildrones2CROCOLAKE"].items():
+            reverse_map[croco_var].append(sensor_var)
+
+        # Merge reads from multiple source (sensors) columns into a single croco column
+        for croco_var, sensor_vars in reverse_map.items():
+            existing = [v for v in sensor_vars if v in df.columns]
+            if len(existing) > 1:
+                df[croco_var] = df[existing].bfill(axis=1).iloc[:, 0]
+                df = df.drop(columns=[col for col in existing if col != croco_var], errors='ignore')
+
         # make df consistent with CrocoLake schema
         df = self.standardize_data(df)
 
@@ -202,11 +221,6 @@ class ConverterSaildrones(Converter):
         # Toolbox of TEOS-10
         df["PRES"] = gsw.p_from_z(-df["depth"], df["latitude"])
         df["PRES"] = df["PRES"].astype("float32[pyarrow]")
-
-        # Merge temperature readings from multiple sensors into a unified 'TEMP' column.
-        temp_sources = ["TEMP_SBE37_MEAN", "TEMP_DEPTH_HALFMETER_MEAN", "TEMP_CTD_MEAN"]
-        existing_temp_sources = [col for col in temp_sources if col in df.columns]
-        df["TEMP"] = df[existing_temp_sources].bfill(axis=1).iloc[:, 0]
 
         # standardize data and generate schemas
         df = super().standardize_data(df)
