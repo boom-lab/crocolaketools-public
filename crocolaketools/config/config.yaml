@@ -120,3 +120,7 @@ Saildrones_BGC:
   add_derived_vars: True
   overwrite: True
   tmp_path:
+
+# Default relative path for demo data download
+demo:
+  download_path: ../demo/
