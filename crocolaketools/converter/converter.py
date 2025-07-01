@@ -254,6 +254,8 @@ class Converter:
 
         ddf = ddf.drop_duplicates()
 
+        ddf = self.sort_rows(ddf)
+
         print("repartitioning dask dataframe")
         ddf = ddf.repartition(partition_size="300MB")
 
@@ -265,11 +267,14 @@ class Converter:
 #------------------------------------------------------------------------------#
 ## Re-order columns
     def reorder_columns(self,ddf):
-        """Re-order columns to have PLATFORM_NUMBER, LATITUDE, LONGITUDE, JULD,
-        DB_NAME first
+        """Re-order columns to have DB_NAME, JULD, LATITUDE, LONGITUDE,
+        PLATFORM_NUMBER, CYCLE_NUMBER first
 
         Argument:
         ddf -- dask dataframe to re-order
+
+        Returns:
+        ddf -- re-ordered dask dataframe
         """
 
         cols = ddf.columns.to_list()
@@ -278,7 +283,8 @@ class Converter:
             "JULD",
             "LATITUDE",
             "LONGITUDE",
-            "PLATFORM_NUMBER"
+            "PLATFORM_NUMBER",
+            "CYCLE_NUMBER"
         ]
         for col in first_cols:
             cols.remove(col)
@@ -342,10 +348,8 @@ class Converter:
         append = False
         overwrite = True
         if len(os.listdir(self.outdir_pq))>0:
-            if not self.overwrite:
-                print("Folder exists and contains files. Trying to append to existing parquet files..")
-                append = True
-                overwrite = False
+            if self.overwrite:
+                print("Folder exists and contains files. All content is being removed before and new files created.")
             else:
                 raise ValueError("Folder exists and contains files. Overwrite is set to False, but no append is possible. Please remove the folder or set overwrite to True.")
 
@@ -383,7 +387,7 @@ class Converter:
             elif p in ["LATITUDE","LONGITUDE"]:
                 f = pa.field( p, pa.float64() )
 
-            elif p=="JULD":
+            elif p in ['JULD','DATE_UPDATE']:
                 f = pa.field( p, pa.from_numpy_dtype(np.dtype("datetime64[ns]") ) )
 
             elif "DATA_MODE" in p or p=="DB_NAME":
@@ -548,7 +552,11 @@ class Converter:
 
         self.generate_schema(data.columns.to_list())
 
-        return data.astype(self.schema_pd)
+        data = data.astype(self.schema_pd)
+        if isinstance(data,dd.DataFrame):
+            data = data.persist()
+
+        return data
 
 #------------------------------------------------------------------------------#
 ## wrap LONGITUDE in -180,+180 range
@@ -604,7 +612,13 @@ class Converter:
         # note that the following only works if the wrapped LONGITUDE must be in [-180,180) range
         def modulo_longitude(df):
             # this turns 180 into -180
+            #
+            # not elegant but pyarrow backend does not support modulo operator
+            if df["LONGITUDE"].dtype == "float64[pyarrow]":
+                df["LONGITUDE"] = df["LONGITUDE"].astype("float64")
             df["LONGITUDE"] = (df["LONGITUDE"] - 180) % 360 - 180
+            if df["LONGITUDE"].dtype == "float64":
+                df["LONGITUDE"] = df["LONGITUDE"].astype("float64[pyarrow]")
             return df
 
         ddf = ddf.map_partitions(
@@ -656,24 +670,24 @@ class Converter:
 
         # absolute salinity
         df['ABS_SAL_COMPUTED'] = gsw.conversions.SA_from_SP(
-            df['PSAL'],
-            df['PRES'],
-            df['LONGITUDE'],
-            df['LATITUDE']
-        ).astype("float32[pyarrow]")
+            df['PSAL'], # PSU
+            df['PRES'], # dbar
+            df['LONGITUDE'], # degrees east
+            df['LATITUDE'] # degrees north
+        ).astype("float32[pyarrow]") # PSU
 
         # conservative temperature
         df['CONSERVATIVE_TEMP_COMPUTED'] = gsw.conversions.CT_from_t(
-            df['ABS_SAL_COMPUTED'],
-            df['TEMP'],
-            df['PRES']
-        ).astype("float32[pyarrow]")
+            df['ABS_SAL_COMPUTED'], # PSU
+            df['TEMP'], # degrees Celsius
+            df['PRES']  # dbar
+        ).astype("float32[pyarrow]") # degrees Celsius
 
         # potential density anomaly with reference pressure of 1000 dbar
         df['SIGMA1_COMPUTED'] = gsw.density.sigma1(
-            df['ABS_SAL_COMPUTED'],
-            df['CONSERVATIVE_TEMP_COMPUTED']
-        ).astype("float32[pyarrow]")
+            df['ABS_SAL_COMPUTED'], # PSU
+            df['CONSERVATIVE_TEMP_COMPUTED'] # degrees Celsius
+        ).astype("float32[pyarrow]") # kg/m^3
 
         return df
 
@@ -694,10 +708,12 @@ class Converter:
         # Add columns that will be created or dask might not find the metadata
         # when building the graph
         # Also add the columns to the schema for storing to parquet
+        meta = {}
+        meta = {col: ddf.dtypes[col] for col in ddf.columns}
+
         for col in ["ABS_SAL_COMPUTED","CONSERVATIVE_TEMP_COMPUTED","SIGMA1_COMPUTED"]:
             if col not in ddf.columns:
-                ddf[col] = pd.NA
-                ddf[col] = ddf[col].astype("float32[pyarrow]")
+                meta[col] = "float32[pyarrow]"
 
                 if not hasattr(self, 'schema_pq'):
                     warnings.warn("No schema found. You might encounter issues when storing to parquet.")
@@ -714,7 +730,7 @@ class Converter:
 
         ddf = ddf.map_partitions(
             self.compute_derived_variables,
-            meta=ddf
+            meta=meta
         )
 
         return ddf
@@ -774,6 +790,29 @@ class Converter:
         condition_na = df[ cols_to_check ].isna().all(axis="columns")
         df = df.loc[~condition_na]
         df.reset_index(drop=True, inplace=True)
+
+        return df
+
+#------------------------------------------------------------------------------#
+## Sort rows
+    def sort_rows(self,df):
+        """Sort dataframe's rows hierarchically by PLATFORM_NUMBER,
+        CYCLE_NUMBER, and PRES. This should ensure that profiles are sorted
+        correctly
+
+        Arguments:
+        df  --  pandas dataframe
+
+        Returns:
+        df -- sorted dataframe
+
+        """
+
+        df = df.sort_values(
+            by=["PLATFORM_NUMBER", "CYCLE_NUMBER", "PRES"],
+            ascending=[True, True, True],
+            ignore_index=True
+        )
 
         return df
 
