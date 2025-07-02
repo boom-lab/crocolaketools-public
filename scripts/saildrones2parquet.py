@@ -58,7 +58,9 @@ def saildrones2parquet(saildrones_path=None, outdir_pqt=None, fname_pq=None, use
 
     print("Working on BGC files...")
 
-    client.restart()
+    # Restarting the server forces dask to free the memory
+    client.shutdown()
+    client = Client(**config_cluster["SAILDRONES"])
 
     if not use_config_file:
         print("Using user-defined configuration")
