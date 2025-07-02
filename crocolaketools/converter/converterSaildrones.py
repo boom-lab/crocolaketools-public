@@ -177,8 +177,8 @@ class ConverterSaildrones(Converter):
         df    -- pandas dataframe with standardized schema
         """
 
-        # Filter out rows where latitude or longitude are missing
-        df = df[df["latitude"].notna() & df["longitude"].notna()]
+        # Ensure all identifiers are non-null
+        df = df[df[["time", "latitude", "longitude", "depth"]].notna().all(axis=1)]
 
         # Group source columns by target variable: CROCOLAKE_VAR -> [SENSOR_VAR_1, SENSOR_VAR_2, ...]
         reverse_map = defaultdict(list)
