@@ -73,6 +73,9 @@ class ConverterSaildrones(Converter):
         # combine all results into a single dask dataframe
         ddf = dd.from_delayed(results)
 
+        # Stores the intermediate result in memory. This prevents the task graph from becoming too large
+        ddf = ddf.persist()
+
         self.call_guess_schema = True
 
         return ddf
@@ -109,10 +112,9 @@ class ConverterSaildrones(Converter):
                     invars = list(set(params.params["Saildrones"]) & set(ds.data_vars))
                     
                     # Instead of loading the entire dataset into memory, we process only the required variables
-                    # And avoid full DataFrame conversion immediately
-                    data = {var: ds[var].values for var in invars}  # Load data lazily as numpy arrays
+                    data = {var: ds[var].values for var in invars}
                     df = pd.DataFrame(data)
-                    df["time"] = pd.to_datetime(ds["time"].values)  # Handle datetime conversion separately
+                    df["time"] = pd.to_datetime(ds["time"].values)
                     wmo_id = ds.attrs["wmo_id"]
                     mission_start_year = pd.to_datetime(ds.time.min().item()).year
                 finally: # Ensure dataset is always closed
@@ -151,7 +153,7 @@ class ConverterSaildrones(Converter):
         
         for var, depth in depth_map.items():
             if var in df.columns:
-                not_na_rows = df[df[var].notna()][common_cols + [var]]
+                not_na_rows = df[df[var].notna()][common_cols + [var]].copy()
                 not_na_rows["depth"] = depth
                 depth_annotated_rows.append(not_na_rows)
 
@@ -196,12 +198,13 @@ class ConverterSaildrones(Converter):
         for croco_var, sensor_vars in reverse_map.items():
             existing = [v for v in sensor_vars if v in df.columns]
             if len(existing) > 1:
-                # Filling missing values across multiple columns
                 merged = df[existing[0]]
                 for col in existing[1:]:
                     merged = merged.combine_first(df[col])
                 df[croco_var] = merged
-                df = df.drop(columns=[col for col in existing if col != croco_var], errors='ignore')
+
+                # Drop columns after merging to reduce memory footprint
+                df.drop(columns=[col for col in existing if col != croco_var], inplace=True, errors='ignore')
 
         # make df consistent with CrocoLake schema
         df = self.standardize_data(df)
