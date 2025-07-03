@@ -107,7 +107,12 @@ class ConverterSaildrones(Converter):
                 ds = xr.open_dataset(input_fname, engine="netcdf4", cache=False)
                 try:
                     invars = list(set(params.params["Saildrones"]) & set(ds.data_vars))
-                    df = ds[invars].to_dataframe().reset_index()
+                    
+                    # Instead of loading the entire dataset into memory, we process only the required variables
+                    # And avoid full DataFrame conversion immediately
+                    data = {var: ds[var].values for var in invars}  # Load data lazily as numpy arrays
+                    df = pd.DataFrame(data)
+                    df["time"] = pd.to_datetime(ds["time"].values)  # Handle datetime conversion separately
                     wmo_id = ds.attrs["wmo_id"]
                     mission_start_year = pd.to_datetime(ds.time.min().item()).year
                 finally: # Ensure dataset is always closed
@@ -140,16 +145,18 @@ class ConverterSaildrones(Converter):
             "BKSCT_RED_MEAN":              1.9, 
         }
 
-        # Build depth-annotated DataFrames for each variable
+        # Build depth-annotated DataFrames for each variable without intermediate DataFrame creation
         common_cols = ["time", "latitude", "longitude"]
-        depth_annotated_dfs = [
-            df[df[var].notna()][common_cols + [var]].assign(depth=depth)
-            for var, depth in depth_map.items() if var in df.columns
-        ]
+        depth_annotated_rows = []
+        
+        for var, depth in depth_map.items():
+            if var in df.columns:
+                not_na_rows = df[df[var].notna()][common_cols + [var]]
+                not_na_rows["depth"] = depth
+                depth_annotated_rows.append(not_na_rows)
 
-        # Combine the DataFrames and deduplicate
-        df_depth_annotated = pd.concat(depth_annotated_dfs, ignore_index=True)
-        df = df_depth_annotated.groupby(common_cols + ["depth"]).first().reset_index()
+        # Combine all the rows
+        df = pd.concat(depth_annotated_rows, ignore_index=True)
 
         # Assign wmo_id from global attributes
         df["wmo_id"] = wmo_id
@@ -189,7 +196,11 @@ class ConverterSaildrones(Converter):
         for croco_var, sensor_vars in reverse_map.items():
             existing = [v for v in sensor_vars if v in df.columns]
             if len(existing) > 1:
-                df[croco_var] = df[existing].bfill(axis=1).iloc[:, 0]
+                # Filling missing values across multiple columns
+                merged = df[existing[0]]
+                for col in existing[1:]:
+                    merged = merged.combine_first(df[col])
+                df[croco_var] = merged
                 df = df.drop(columns=[col for col in existing if col != croco_var], errors='ignore')
 
         # make df consistent with CrocoLake schema
