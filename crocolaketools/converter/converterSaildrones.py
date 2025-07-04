@@ -110,8 +110,6 @@ class ConverterSaildrones(Converter):
                 ds = xr.open_dataset(input_fname, engine="netcdf4", cache=False)
                 try:
                     invars = list(set(params.params["Saildrones"]) & set(ds.data_vars))
-                    
-                    # Instead of loading the entire dataset into memory, we process only the required variables
                     data = {var: ds[var].values for var in invars}
                     df = pd.DataFrame(data)
                     df["time"] = pd.to_datetime(ds["time"].values)
@@ -157,8 +155,9 @@ class ConverterSaildrones(Converter):
                 not_na_rows["depth"] = depth
                 depth_annotated_rows.append(not_na_rows)
 
-        # Combine all the rows
-        df = pd.concat(depth_annotated_rows, ignore_index=True)
+        # Combine sensors with the same depth
+        depth_annotated_rows = pd.concat(depth_annotated_rows, ignore_index=True)
+        df = depth_annotated_rows.groupby(["time", "latitude", "longitude", "depth"]).first().reset_index()
 
         # Assign wmo_id from global attributes
         df["wmo_id"] = wmo_id
