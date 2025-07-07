@@ -112,8 +112,7 @@ class ConverterSaildrones(Converter):
                     invars = list(set(params.params["Saildrones"]) & set(ds.data_vars))
                     data = {var: ds[var].values for var in invars}
                     df = pd.DataFrame(data)
-                    df["time"] = pd.to_datetime(ds["time"].values)
-                    wmo_id = ds.attrs["wmo_id"]
+                    wmo_id = ds.attrs["wmo_id"] # use wmo_id as a PLATFORM_NUMBER
                     mission_start_year = pd.to_datetime(ds.time.min().item()).year
                 finally: # Ensure dataset is always closed
                     ds.close()
@@ -121,43 +120,6 @@ class ConverterSaildrones(Converter):
             except Exception as e:
                 print(f"Error reading file {input_fname}: {e}")
                 raise
-
-        # Assign depths based on known sensor installation depth from metadata
-        depth_map = {
-            "TEMP_CTD_MEAN":               0.6,
-            "TEMP_CTD_RBR_MEAN":           0.53,
-            "TEMP_SBE37_MEAN":             1.7, 
-            "TEMP_DEPTH_HALFMETER_MEAN":   0.5, 
-            "O2_CONC_MEAN":                0.6,
-            "O2_RBR_CONC_MEAN":            0.53,
-            "O2_CONC_RBR_MEAN":            0.53,
-            "O2_CONC_SBE37_MEAN":          1.7, 
-            "O2_CONC_UNCOR_MEAN":          0.6,
-            "O2_AANDERAA_CONC_UNCOR_MEAN": 0.6,
-            "O2_CONC_AANDERAA_MEAN":       0.6,
-            "SAL_MEAN":                    0.6,
-            "SAL_RBR_MEAN":                0.53,
-            "SAL_SBE37_MEAN":              1.7, 
-            "CHLOR_MEAN":                  0.25,
-            "CHLOR_RBR_MEAN":              0.53,
-            "CHLOR_WETLABS_MEAN":          1.9, 
-            "CDOM_MEAN":                   1.9, 
-            "BKSCT_RED_MEAN":              1.9, 
-        }
-
-        # Build depth-annotated DataFrames for each variable without intermediate DataFrame creation
-        common_cols = ["time", "latitude", "longitude"]
-        depth_annotated_rows = []
-        
-        for var, depth in depth_map.items():
-            if var in df.columns:
-                not_na_rows = df[df[var].notna()][common_cols + [var]].copy()
-                not_na_rows["depth"] = depth
-                depth_annotated_rows.append(not_na_rows)
-
-        # Combine sensors with the same depth
-        depth_annotated_rows = pd.concat(depth_annotated_rows, ignore_index=True)
-        df = depth_annotated_rows.groupby(["time", "latitude", "longitude", "depth"]).first().reset_index()
 
         # Assign wmo_id from global attributes
         df["wmo_id"] = wmo_id
@@ -184,11 +146,14 @@ class ConverterSaildrones(Converter):
         Returns:
         df    -- pandas dataframe with standardized schema
         """
+        
+        # Assign depth column
+        df = self.assign_depths(df, invars)
 
-        # Ensure all identifiers are non-null
-        df = df[df[["time", "latitude", "longitude", "depth"]].notna().all(axis=1)]
+        # Ensure all identifiers are non-null AFTER depth assignment
+        df.dropna(subset=["time", "latitude", "longitude", "depth"], inplace=True)
 
-        # Group source columns by target variable: CROCOLAKE_VAR -> [SENSOR_VAR_1, SENSOR_VAR_2, ...]
+        # Group source columns by target variable
         reverse_map = defaultdict(list)
         for sensor_var, croco_var in params.params["Saildrones2CROCOLAKE"].items():
             reverse_map[croco_var].append(sensor_var)
@@ -197,12 +162,7 @@ class ConverterSaildrones(Converter):
         for croco_var, sensor_vars in reverse_map.items():
             existing = [v for v in sensor_vars if v in df.columns]
             if len(existing) > 1:
-                merged = df[existing[0]]
-                for col in existing[1:]:
-                    merged = merged.combine_first(df[col])
-                df[croco_var] = merged
-
-                # Drop columns after merging to reduce memory footprint
+                df[croco_var] = df[existing].bfill(axis=1).iloc[:, 0]
                 df.drop(columns=[col for col in existing if col != croco_var], inplace=True, errors='ignore')
 
         # make df consistent with CrocoLake schema
@@ -213,10 +173,55 @@ class ConverterSaildrones(Converter):
         if self.db_type == "BGC":
             cols_to_check += ["DOXY", "CHLA", "CDOM", "BBP700"]
         cols_to_check = [col for col in cols_to_check if col in df.columns]
-
         df = super().remove_all_NAs(df, cols_to_check)
 
         return df
+
+#------------------------------------------------------------------------------#
+## Assign depths to variables
+    def assign_depths(self, df, invars):
+        """Assign depths to variables based on known sensor installation depths"""
+
+        depth_map = {
+            "TEMP_CTD_MEAN":               0.6,
+            "TEMP_CTD_RBR_MEAN":           0.53,
+            "TEMP_SBE37_MEAN":             1.7,
+            "TEMP_DEPTH_HALFMETER_MEAN":   0.5,
+            "O2_CONC_MEAN":                0.6,
+            "O2_RBR_CONC_MEAN":            0.53,
+            "O2_CONC_RBR_MEAN":            0.53,
+            "O2_CONC_SBE37_MEAN":          1.7,
+            "O2_CONC_UNCOR_MEAN":          0.6,
+            "O2_AANDERAA_CONC_UNCOR_MEAN": 0.6,
+            "O2_CONC_AANDERAA_MEAN":       0.6,
+            "SAL_MEAN":                    0.6,
+            "SAL_RBR_MEAN":                0.53,
+            "SAL_SBE37_MEAN":              1.7,
+            "CHLOR_MEAN":                  0.25,
+            "CHLOR_RBR_MEAN":              0.53,
+            "CHLOR_WETLABS_MEAN":          1.9,
+            "CDOM_MEAN":                   1.9,
+            "BKSCT_RED_MEAN":              1.9,
+        }
+
+        id_vars = ["time", "latitude", "longitude", "wmo_id", "CYCLE_NUMBER"]
+        value_vars = [var for var in depth_map if var in df.columns and var in invars]
+
+        if not value_vars:
+            return pd.DataFrame(columns=id_vars + ["depth"])
+
+        df_long = df.melt(id_vars=id_vars, value_vars=value_vars, var_name='variable', value_name='value')
+        df_long.dropna(subset=['value'], inplace=True)
+        df_long['depth'] = df_long['variable'].map(depth_map)
+
+        df_pivoted = df_long.pivot_table(
+            index=id_vars + ['depth'], 
+            columns='variable', 
+            values='value'
+        ).reset_index()
+        
+        df_pivoted.columns.name = None
+        return df_pivoted
 
 #------------------------------------------------------------------------------#
 ## Convert parquet schema to xarray
