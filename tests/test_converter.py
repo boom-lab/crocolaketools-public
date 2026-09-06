@@ -658,7 +658,7 @@ class TestConverter:
             db_type="BGC",
         )
 
-        fname = random.choice(glob.glob(converterBGC.input_path + '/*.parquet'))
+        fname = random.choice(glob.glob(converterBGC.input_path / '*.parquet'))
         ddf = converterBGC.read_pq(filename=fname)
         ddf = converterBGC.update_cols(ddf)
 

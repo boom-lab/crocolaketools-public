@@ -196,14 +196,15 @@ class ConverterArgoQC(Converter):
         # BGC has one DATA_MODE variable for each variable of each row
 
         # Find good QC values
+        core_vars = ["PRES", "TEMP", "PSAL"]
         for param in param_basenames:
             data_mode_col = param + "_DATA_MODE" if db_type == "BGC" else "DATA_MODE"
 
             condition_1 = ( ~df[param+"_ADJUSTED"].isna() ) & ( df[param + "_ADJUSTED_QC"].isin([1, 2, 5, 8]) ) & ( df[data_mode_col].isin(["A", "D"]) )
-            if db_type == "PHY":
+            if param in core_vars:
                 condition_2 = ( ~df[param].isna() ) & ( df[param+"_QC"].isin([1, 2, 5, 8]) ) & ( df[data_mode_col] == "R" )
                 condition_3 = ~(condition_1 | condition_2)
-            elif db_type == "BGC":
+            else:
                 condition_3 = ~condition_1
 
             # Keep best values reducing the number of columns
@@ -212,7 +213,7 @@ class ConverterArgoQC(Converter):
             df.loc[condition_1, param+"_ERROR"] = df.loc[condition_1, param+"_ADJUSTED_ERROR"]
 
             # Fill param columns with NA values otherwise
-            if db_type == "PHY":
+            if param in core_vars:
                 # data already come with param set to param (not param+"_ADJUSTED")
                 df.loc[condition_2, param+"_ERROR"] = pd.NA
             df.loc[condition_3, param] = pd.NA
