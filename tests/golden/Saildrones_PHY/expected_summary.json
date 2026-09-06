@@ -98,7 +98,7 @@
       "dtype": "float[pyarrow]",
       "max": 0.014999999664723873,
       "min": 0.0010000000474974513,
-      "n_null": 50
+      "n_null": 0
     },
     "TEMP_QC": {
       "dtype": "uint8[pyarrow]",

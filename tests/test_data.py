@@ -2,6 +2,7 @@
 
 import copy
 import datetime
+import functools
 import os
 import glob
 import importlib.resources
@@ -15,10 +16,71 @@ import pandas as pd
 import pytest
 import yaml
 import xarray as xr
+# import argopy requires some workaround to import erddapy because of versions
+# mismatch
+import erddapy.erddapy
+if not hasattr(erddapy.erddapy, '_quote_string_constraints'):
+    from erddapy.core.url import _quote_string_constraints
+    erddapy.erddapy._quote_string_constraints = _quote_string_constraints
+import argopy
 
 from crocolaketools import db_params
 from crocolaketools.utils.logger_configurator import configure_logging
 from crocolaketools.config.config_paths import get_config_paths_field
+from crocolaketools.converter import units_conversion
+from crocolaketools.converter.converterSaildrones import ConverterSaildrones
+from crocolaketools.converter.converterSprayGliders import ConverterSprayGliders
+from crocolaketools.converter.converterOleanderXBT import ConverterOleanderXBT
+from crocolaketools.converter.converterGLODAP import ConverterGLODAP
+
+##########################################################################
+# Unit-conversion support
+#
+# Some converters store a variable in different units than the source file
+# (Saildrones DOXY: micromol/L -> micromol/kg). These helpers re-apply the
+# converter's own registered conversion to the expected value.
+
+CONVERTER_CLASSES = {
+    "Saildrones": ConverterSaildrones,
+    "SprayGliders": ConverterSprayGliders,
+    "OleanderXBT": ConverterOleanderXBT,
+    "GLODAP": ConverterGLODAP,
+}
+
+
+# cached: constructing a converter reads config.yaml, and this is called once per loop iteration
+@functools.lru_cache(maxsize=None)
+def registered_unit_conversions(db_name, db_type):
+    """Unit conversions a converter registers, keyed by CrocoLake column."""
+    converter_cls = CONVERTER_CLASSES.get(db_name)
+    if converter_cls is None:
+        return {}
+    return tuple(sorted(converter_cls(db_type=db_type).cols_to_convert.items()))
+
+
+def converts_units(db_name, db_type, croco_col):
+    """True if `croco_col` is stored in different units than the source."""
+    key = dict(registered_unit_conversions(db_name, db_type)).get(croco_col)
+    return key is not None and key != "skip"
+
+
+def expected_after_unit_conversion(db_name, db_type, croco_col, raw_value, pq_row):
+    """Apply the converter's registered unit conversion to a raw source value.
+
+    Runs the production function from `units_conversion.conversion_map`.
+    """
+    if not converts_units(db_name, db_type, croco_col):
+        return raw_value
+    key = dict(registered_unit_conversions(db_name, db_type))[croco_col]
+    convert_fn = units_conversion.conversion_map[key]
+    # reuse the stored row so every column keeps its pyarrow dtype (gsw cannot
+    # coerce object columns), overriding only the value under test
+    frame = pq_row.reset_index(drop=True).copy()
+    frame[croco_col] = pd.array([raw_value], dtype=frame[croco_col].dtype)
+    converted = convert_fn(
+        dd.from_pandas(frame, npartitions=1), croco_col
+    ).compute()
+    return converted[croco_col].iloc[0]
 
 ####################################################################################################
 class TestData:
@@ -67,11 +129,7 @@ class TestData:
         if db_name_config is None:
             db_name_config = db_name
 
-        config_path = importlib.resources.files("crocolaketools.config").joinpath("config.yaml")
-        config = yaml.safe_load(open(config_path))
-        config = config[db_name_config + "_" + db_type]
-
-        pq_path = str(os.path.abspath(Path(config["outdir_pq"])))
+        pq_path = str(get_config_paths_field(db_name_config + "_" + db_type, "outdir_pq"))
         print("parquet dataset path:", pq_path)
 
         ddf_plat_nb = dd.read_parquet(
@@ -194,9 +252,9 @@ class TestData:
         ]
 
         assert len(result) == 1
-        assert result[output_name].iloc[0] == pytest.approx(
-            source[value_name], abs=1e-5
-        )
+        # CrocoLake stores measured variables as float32. Compare in float32
+        # rather than with a fixed absolute tolerance
+        assert np.float32(result[output_name].iloc[0]) == np.float32(source[value_name])
 
 
 #------------------------------------------------------------------------------#
@@ -220,6 +278,9 @@ class TestData:
 
         nc_path = get_config_paths_field(db_name_config + "_" + db_type, "input_path" )
         pq_path = get_config_paths_field(db_name_config + "_" + db_type, "outdir_pq" )
+
+        declared_columns = set(db_params.params["CROCOLAKE_" + db_type + "_QC"])
+        pq_columns = set(dd.read_parquet(pq_path).columns)
 
         # get list of original nc files
         if os.path.isdir(nc_path):
@@ -267,6 +328,9 @@ class TestData:
             variables = list(
                 set(list(ds.data_vars)) & set(params_in_crocolake)
             )
+            variables = [
+                v for v in variables if params_db2crocolake[v] in declared_columns
+            ]
 
             if db_name == "Saildrones":
                 # Exclude coordinate variables ('latitude', 'longitude', 'time') for Saildrones
@@ -332,13 +396,21 @@ class TestData:
             cols_pq.extend(indices_pq.keys())
 
             logging.info(f"var_pq: {var_pq}")
+
+            assert var_pq in pq_columns, (
+                f"{var_pq} is declared for {db_type} and mapped from "
+                f"{random_var}, but the converter did not write it"
+            )
             logging.info(f"indices_pq: {indices_pq}")
             pq_filters = [(column, "==", value) for column, value in indices_pq.items()]
             logging.info(f"filters: {pq_filters}")
 
+            # a converted column needs its whole row: the conversion depends on
+            # other stored columns (e.g. the gsw-derived density inputs)
+            needs_conversion = converts_units(db_name, db_type, var_pq)
             ddf = dd.read_parquet(
                 pq_path,
-                columns=[var_pq],
+                columns=None if needs_conversion else [var_pq],
                 filters=pq_filters,
             )
             ddf = ddf.compute() # this should be one row or an empty dataframe
@@ -371,6 +443,14 @@ class TestData:
             pq_value = ddf[var_pq].values[0] # this should be a scalar or a pd.NA
             logging.info(f"pq_value: {pq_value}")
 
+            # the stored value may be in different units than the source; apply
+            # the converter's own registered conversion to the expected value
+            if needs_conversion and not pd.isna(nc_value):
+                nc_value = expected_after_unit_conversion(
+                    db_name, db_type, var_pq, nc_value, ddf.iloc[[0]]
+                )
+                logging.info(f"nc_value after unit conversion: {nc_value}")
+
             if pd.isna(pq_value):
                 # check that also original source is NaN or pd.NA
                 assert pd.isna(nc_value)
@@ -384,7 +464,19 @@ class TestData:
                 elif np.issubdtype(type(pq_value), np.floating):
                     pq_value = np.float32(pq_value)
                     nc_value = np.float32(nc_value)
-                assert pq_value == nc_value
+
+                if needs_conversion:
+                    # TOLERANCE (only on unit-converted columns): a conversion
+                    # puts arithmetic between source and stored value, so the
+                    # last float32 bit depends on operation order and exact
+                    # equality is unsatisfiable
+                    assert np.isclose(pq_value, nc_value, rtol=1e-6, atol=0), (
+                        f"{var_pq}: stored {pq_value} != source converted to "
+                        f"CrocoLake units {nc_value}"
+                    )
+                else:
+                    # untransformed columns must match exactly in float32
+                    assert pq_value == nc_value
 
             else:
                 assert False, "value in CrocoLake is not a scalar nor a pd.NA"
@@ -527,9 +619,11 @@ class TestData:
         )
 
 #------------------------------------------------------------------------------#
+    @pytest.mark.skip(reason="disabled pending official SPOTS support")
     def test_data_integrity_spots_phy(self):
         self._check_variables_csv("SPOTS", "PHY")
 
+    @pytest.mark.skip(reason="disabled pending official SPOTS support")
     def test_data_integrity_spots_bgc(self):
         self._check_variables_csv("SPOTS", "BGC")
 

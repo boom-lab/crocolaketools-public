@@ -57,13 +57,13 @@ ARGO-GDAC_PHY:
   db: ARGO-GDAC
   db_type: PHY
   input_path: ../../tests/fixtures/demo_ARGO_GDAC/GDAC/dac/
-  outdir_pq: ../../tests/fixtures/parquet/demo_ARGO-GDAC_PHY/
+  outdir_pq: ../../tests/fixtures/parquet/demo_ARGO_GDAC_PHY/
 
 ARGO-GDAC_BGC:
   db: ARGO-GDAC
   db_type: BGC
   input_path: ../../tests/fixtures/demo_ARGO_GDAC/GDAC/dac/
-  outdir_pq: ../../tests/fixtures/parquet/demo_ARGO-GDAC_BGC/
+  outdir_pq: ../../tests/fixtures/parquet/demo_ARGO_GDAC_BGC/
 
 # GLODAP config
 GLODAP_PHY:

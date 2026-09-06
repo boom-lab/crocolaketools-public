@@ -25,8 +25,8 @@ from pprint import pprint
 from dask.distributed import print
 from crocolaketools import db_params
 
-# import argopy pinned version requires some workaround to import erddapy
-# correctly
+# import argopy requires some workaround to import erddapy because of versions
+# mismatch
 import erddapy.erddapy
 if not hasattr(erddapy.erddapy, '_quote_string_constraints'):
     from erddapy.core.url import _quote_string_constraints
