@@ -195,6 +195,8 @@ class ConverterArgoQC(Converter):
         # PHY has one DATA_MODE variable for all variables of each row
         # BGC has one DATA_MODE variable for each variable of each row
 
+        df = df.copy()
+
         # Find good QC values
         core_vars = ["PRES", "TEMP", "PSAL"]
         for param in param_basenames:

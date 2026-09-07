@@ -19,6 +19,7 @@ import yaml
 
 import dask.dataframe as dd
 from dask.distributed import Client
+import numpy as np
 import pandas as pd
 import pyarrow as pa
 import pyarrow.parquet as pq
@@ -945,11 +946,11 @@ class TestConverter:
             "CYCLE_NUMBER": [1, 1, 1],
             "depth": [0.5, 1.7, 0.5],
             # TEMP_CTD_RBR_MEAN and TEMP_SBE37_MEAN should merge to TEMP
-            "TEMP_CTD_RBR_MEAN": [20.5, pd.NA, 21.0],
-            "TEMP_SBE37_MEAN": [pd.NA, 20.2, pd.NA],
+            "TEMP_CTD_RBR_MEAN": [20.5, np.nan, 21.0],
+            "TEMP_SBE37_MEAN": [np.nan, 20.2, np.nan],
             # SAL_RBR_MEAN and SAL_SBE37_MEAN should merge to PSAL
-            "SAL_RBR_MEAN": [35.0, pd.NA, 35.5],
-            "SAL_SBE37_MEAN": [pd.NA, 34.8, pd.NA]
+            "SAL_RBR_MEAN": [35.0, np.nan, 35.5],
+            "SAL_SBE37_MEAN": [np.nan, 34.8, np.nan]
         }
         dummy_df = pd.DataFrame(dummy_data)
         invars = list(dummy_df.columns)
@@ -1008,10 +1009,10 @@ class TestConverter:
             "wmo_id": ["TEST01", "TEST01", "TEST01"],
             "CYCLE_NUMBER": [1, 1, 1],
             "depth": [0.6, 1.7, 1.9],
-            "TEMP_CTD_MEAN": [20.1, pd.NA, pd.NA],
-            "O2_CONC_MEAN": [280.0, pd.NA, pd.NA],
-            "SAL_SBE37_MEAN": [pd.NA, 35.5, pd.NA],
-            "CHLOR_WETLABS_MEAN": [pd.NA, pd.NA, 0.5]
+            "TEMP_CTD_MEAN": [20.1, np.nan, np.nan],
+            "O2_CONC_MEAN": [280.0, np.nan, np.nan],
+            "SAL_SBE37_MEAN": [np.nan, 35.5, np.nan],
+            "CHLOR_WETLABS_MEAN": [np.nan, np.nan, 0.5]
         }
 
         id_vars = ["time", "latitude", "longitude", "wmo_id", "CYCLE_NUMBER", "depth"]

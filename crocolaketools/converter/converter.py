@@ -619,6 +619,7 @@ class Converter:
             # this turns 180 into -180
             #
             # not elegant but pyarrow backend does not support modulo operator
+            df = df.copy()
             df["LONGITUDE"] = df["LONGITUDE"].astype("float64")
             df["LONGITUDE"] = (df["LONGITUDE"] - 180) % 360 - 180
             df["LONGITUDE"] = df["LONGITUDE"].astype("float64[pyarrow]")
