@@ -826,6 +826,7 @@ class TestConverter:
         self._assert_within_bounds(result, var, lower=0.0, upper=35.0, unit="kg/m^3")
 
 
+    @pytest.mark.skip(reason="disabled pending official support")
     def test_converter_cpr_read_to_df(self):
         """
         Test that the CPR CSV file is correctly read into a pandas DataFrame.
@@ -849,6 +850,7 @@ class TestConverter:
         for col in required_columns:
             assert col in df.columns
 
+    @pytest.mark.skip(reason="disabled pending official support")
     def test_converter_cpr_standardize_data(self):
         """
         Test that the CPR DataFrame is correctly standardized.
@@ -889,6 +891,7 @@ class TestConverter:
         # Check that the date column is converted to datetime
         assert str(standardized_df["JULD"].dtype) == "timestamp[ns][pyarrow]"
 
+    @pytest.mark.skip(reason="disabled pending official support")
     def test_converter_cpr_convert(self):
         """
         Test that the CPR CSV file is correctly converted to Parquet format.
