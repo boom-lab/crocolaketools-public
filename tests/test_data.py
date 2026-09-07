@@ -83,6 +83,12 @@ def expected_after_unit_conversion(db_name, db_type, croco_col, raw_value, pq_ro
     return converted[croco_col].iloc[0]
 
 ####################################################################################################
+@pytest.fixture(scope="module", autouse=True)
+def _parquet(generated_parquet):
+    """Every test here reads converter output from tests/fixtures/parquet/."""
+
+
+####################################################################################################
 class TestData:
 #------------------------------------------------------------------------------#
 # Set of tests that verify that data in the original dataset is in the parquet
@@ -191,10 +197,10 @@ class TestData:
                     assert len(df) == len(df.drop_duplicates())
 
                 # test that ddf is sorted by PRES
-                def check_sorted(df):
-                    """Check that df is sorted by PRES"""
-                    return df["PRES"].is_monotonic_increasing
-                condition = df.groupby(["JULD","LATITUDE","LONGITUDE"]).apply(check_sorted)
+                def check_sorted(pres):
+                    """Check that PRES is sorted"""
+                    return pres.is_monotonic_increasing
+                condition = df.groupby(["JULD","LATITUDE","LONGITUDE"])["PRES"].apply(check_sorted)
 
                 assert condition.all()
 

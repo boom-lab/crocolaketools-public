@@ -57,18 +57,30 @@ GOLDEN_REGISTRY = [
 
 
 class DataTarget(NamedTuple):
-    name: str                  # tests/fixtures/parquet/<name>/ directory
-    converter_cls: Type
-    db_type: str                # "PHY" or "BGC"
+    """A parquet dataset tests/test_data.py reads.
+
+    Unlike GoldenTarget, output goes to the config.yaml-declared outdir_pq
+    (tests/fixtures/parquet/, gitignored) because test_data.py resolves its
+    paths from config.yaml. conftest.generated_parquet builds all of these
+    once per session, so CI has them and a local run never tests stale output.
+    """
+    config_key: str                 # crocolaketools/config/config.yaml key
+    db_type: str                    # "PHY" or "BGC"
+    converter_cls: Optional[Type]   # None: built with daskTools, not a Converter
+    chunk_profile: Optional[int] = None  # see GoldenTarget.chunk_profile
+    nc_suffix: Optional[str] = None      # daskTools targets only
+
 
 DATA_REGISTRY = [
-    DataTarget("ARGO-QC_PHY", ConverterArgoQC, "PHY"),
-    DataTarget("ARGO-QC_BGC", ConverterArgoQC, "BGC"),
-    DataTarget("GLODAP_PHY", ConverterGLODAP, "PHY"),
-    DataTarget("GLODAP_BGC", ConverterGLODAP, "BGC"),
-    DataTarget("SPRAY_PHY", ConverterSprayGliders, "PHY"),
-    DataTarget("SPRAY_BGC", ConverterSprayGliders, "BGC"),
-    DataTarget("Saildrones_PHY", ConverterSaildrones, "PHY"),
-    DataTarget("Saildrones_BGC", ConverterSaildrones, "BGC"),
-    DataTarget("OleanderXBT_PHY", ConverterOleanderXBT, "PHY"),
+    DataTarget("ARGO_PHY", "PHY", ConverterArgoQC),
+    DataTarget("ARGO_BGC", "BGC", ConverterArgoQC),
+    DataTarget("ARGO-GDAC_PHY", "PHY", None, nc_suffix="_prof.nc"),
+    DataTarget("ARGO-GDAC_BGC", "BGC", None, nc_suffix="_Sprof.nc"),
+    DataTarget("GLODAP_PHY", "PHY", ConverterGLODAP),
+    DataTarget("GLODAP_BGC", "BGC", ConverterGLODAP),
+    DataTarget("SprayGliders_PHY", "PHY", ConverterSprayGliders, chunk_profile=20),
+    DataTarget("SprayGliders_BGC", "BGC", ConverterSprayGliders, chunk_profile=20),
+    DataTarget("Saildrones_PHY", "PHY", ConverterSaildrones),
+    DataTarget("Saildrones_BGC", "BGC", ConverterSaildrones),
+    DataTarget("OleanderXBT_PHY", "PHY", ConverterOleanderXBT),
 ]
