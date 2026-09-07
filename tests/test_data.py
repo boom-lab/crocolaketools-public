@@ -27,6 +27,7 @@ import argopy
 from crocolaketools import db_params
 from crocolaketools.utils.logger_configurator import configure_logging
 from crocolaketools.config.config_paths import get_config_paths_field
+from crocolaketools.utils.parquet_filters import normalize_filters
 from crocolaketools.converter import units_conversion
 from crocolaketools.converter.converterSaildrones import ConverterSaildrones
 from crocolaketools.converter.converterSprayGliders import ConverterSprayGliders
@@ -83,6 +84,29 @@ def expected_after_unit_conversion(db_name, db_type, croco_col, raw_value, pq_ro
     return converted[croco_col].iloc[0]
 
 ####################################################################################################
+def test_normalize_filters_matches_nanosecond_timestamps(generated_parquet):
+    """A pd.Timestamp with a sub-microsecond part is truncated to microseconds by
+    pyarrow, so the raw filter matches nothing; normalize_filters must not."""
+
+    pq_path = get_config_paths_field("SprayGliders_PHY", "outdir_pq")
+    df = dd.read_parquet(pq_path).compute()
+
+    juld = df["JULD"].dropna()
+    sub_us = [v for v in juld if pd.Timestamp(v).value % 1000]
+    assert sub_us, "fixture no longer holds a sub-microsecond JULD"
+    value = pd.Timestamp(sub_us[0])
+    expected = int((juld == value).sum())
+    assert expected > 0
+
+    raw = [("JULD", "==", value)]
+    assert len(dd.read_parquet(pq_path, columns=["JULD"], filters=raw).compute()) == 0
+    nfilters = normalize_filters(raw)
+    normalized = dd.read_parquet(
+        pq_path, columns=["JULD"], filters=nfilters
+    ).compute()
+    assert len(normalized) == expected
+
+
 @pytest.fixture(scope="module", autouse=True)
 def _parquet(generated_parquet):
     """Every test here reads converter output from tests/fixtures/parquet/."""
@@ -173,6 +197,7 @@ class TestData:
                 logging.info(f"CYCLE_NUMBER = {p}")
                 df = dd.read_parquet(
                     pq_path,
+                    columns=["PRES","JULD","LATITUDE","LONGITUDE"],
                     filters=[
                         ("PLATFORM_NUMBER", "==", pn),
                         ("CYCLE_NUMBER", "==", p)
@@ -245,12 +270,13 @@ class TestData:
         if source_match.empty:
             pytest.skip("Parquet output does not correspond to the v3 demo CSV.")
         source = source_match.iloc[0]
-        result = dd.read_parquet(
-            pq_path,
-            filters=[
+        nfilters = normalize_filters([
                 ("PLATFORM_NUMBER", "==", source["expocode"]),
                 ("JULD", "==", output_row["JULD"]),
-            ],
+            ])
+        result = dd.read_parquet(
+            pq_path,
+            filters=nfilters,
             columns=["PRES", output_name],
         ).compute()
         result = result[
@@ -286,7 +312,10 @@ class TestData:
         pq_path = get_config_paths_field(db_name_config + "_" + db_type, "outdir_pq" )
 
         declared_columns = set(db_params.params["CROCOLAKE_" + db_type + "_QC"])
-        pq_columns = set(dd.read_parquet(pq_path).columns)
+        # every fixture dataset is a single row group of <=450 rows: hold it in
+        # memory instead of re-reading it once per iteration below
+        pq_df = dd.read_parquet(pq_path).compute()
+        pq_columns = set(pq_df.columns)
 
         # get list of original nc files
         if os.path.isdir(nc_path):
@@ -316,35 +345,43 @@ class TestData:
         lat_name = params_crocolake2db["LATITUDE"]
         lon_name = params_crocolake2db["LONGITUDE"]
 
+        # the loop below draws 1000 times from 1-6 files, so open (and derive the
+        # testable variable list for) each file once
+        ds_cache = {}
+
+        def open_nc(nc_file):
+            if nc_file not in ds_cache:
+                if db_name == "Argo":
+                    ds = xr.open_dataset(nc_file, engine="argo")
+                elif db_name in ["OleanderXBT", "Saildrones"]:
+                    ds = xr.open_dataset(nc_file, engine="netcdf4")
+                else:
+                    ds = xr.open_dataset(nc_file, engine="h5netcdf")
+
+                #only test variables that are preserved in crocolake
+                variables = list(
+                    set(list(ds.data_vars)) & set(params_in_crocolake)
+                )
+                variables = [
+                    v for v in variables if params_db2crocolake[v] in declared_columns
+                ]
+
+                if db_name == "Saildrones":
+                    # Exclude coordinate variables ('latitude', 'longitude', 'time') for Saildrones
+                    # since they do not have corresponding depth information, which is required 
+                    # for uniquely identifying each row in the dataset.
+                    excluded_vars = {lat_name, lon_name, "time"}
+                    variables = [v for v in variables if v not in excluded_vars]
+
+                ds_cache[nc_file] = (ds, variables)
+            return ds_cache[nc_file]
+
         for j in range(1000):
             nc_file = random.choice( nc_files )
+            ds, variables = open_nc(nc_file)
 
-            if db_name == "Argo":
-                ds = xr.open_dataset(nc_file, engine="argo")
-            elif db_name in ["OleanderXBT", "Saildrones"]:
-                ds = xr.open_dataset(nc_file, engine="netcdf4")
-            else:
-                ds = xr.open_dataset(nc_file, engine="h5netcdf")
-
-            #only test variables that are preserved in crocolake
-            ds_vars = list(ds.data_vars)
-            logging.info(f"ds_vars:{ds_vars}")
+            logging.info(f"ds_vars:{list(ds.data_vars)}")
             logging.info(f"params_crocolake:{params_in_crocolake}")
-
-            variables = list(
-                set(list(ds.data_vars)) & set(params_in_crocolake)
-            )
-            variables = [
-                v for v in variables if params_db2crocolake[v] in declared_columns
-            ]
-
-            if db_name == "Saildrones":
-                # Exclude coordinate variables ('latitude', 'longitude', 'time') for Saildrones
-                # since they do not have corresponding depth information, which is required 
-                # for uniquely identifying each row in the dataset.
-                excluded_vars = {lat_name, lon_name, "time"}
-                variables = [v for v in variables if v not in excluded_vars]
-
             logging.info(f"variables:{variables}")
             random_var = random.choice(variables)
             var_data = ds[random_var]
@@ -374,8 +411,9 @@ class TestData:
             logging.info(f"random_var: {random_var}")
             logging.info(f"indices: {indices}")
             logging.info(f"coordinates:")
-            for k,v in indices.items():
-                logging.info(f"{k} : {self._get_scalar_from_ds(ds[k][v])}")
+            if logging.getLogger().isEnabledFor(logging.INFO):
+                for k,v in indices.items():
+                    logging.info(f"{k} : {self._get_scalar_from_ds(ds[k][v])}")
             logging.info(f"nc_value: {nc_value}")
 
             # get coords and variable names in crocolake
@@ -408,21 +446,19 @@ class TestData:
                 f"{random_var}, but the converter did not write it"
             )
             logging.info(f"indices_pq: {indices_pq}")
-            pq_filters = [(column, "==", value) for column, value in indices_pq.items()]
-            logging.info(f"filters: {pq_filters}")
 
             # a converted column needs its whole row: the conversion depends on
             # other stored columns (e.g. the gsw-derived density inputs)
             needs_conversion = converts_units(db_name, db_type, var_pq)
-            ddf = dd.read_parquet(
-                pq_path,
-                columns=None if needs_conversion else [var_pq],
-                filters=pq_filters,
-            )
-            ddf = ddf.compute() # this should be one row or an empty dataframe
-                                # (if the was missing and the whole row it ended
-                                # up into contained missing data that was thus
-                                # discarded)
+            mask = pd.Series(True, index=pq_df.index)
+            for column, value in indices_pq.items():
+                mask &= (pq_df[column] == value)
+            ddf = pq_df[mask]    # this should be one row or an empty dataframe
+                                 # (if the was missing and the whole row it ended
+                                 # up into contained missing data that was thus
+                                 # discarded)
+            if not needs_conversion:
+                ddf = ddf[[var_pq]]
             if ddf.shape[0] == 0:
                 # if the original data ended in a row with all observations as
                 # pd.NAs the row was dropped as it did not contain relevant info
@@ -486,6 +522,9 @@ class TestData:
 
             else:
                 assert False, "value in CrocoLake is not a scalar nor a pd.NA"
+
+        for ds, _ in ds_cache.values():
+            ds.close()
 
 #------------------------------------------------------------------------------#
     def _check_variables_csv(self, db_name, db_type):
