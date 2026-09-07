@@ -658,7 +658,7 @@ class TestConverter:
             db_type="BGC",
         )
 
-        fname = random.choice(glob.glob(converterBGC.input_path / '*.parquet'))
+        fname = random.choice(glob.glob(str(converterBGC.input_path / '*.parquet')))
         ddf = converterBGC.read_pq(filename=fname)
         ddf = converterBGC.update_cols(ddf)
 
@@ -685,7 +685,7 @@ class TestConverter:
             else:
                 print(f"Variable {var} not in dataframe.")
 
-    def test_converter_argoqc_convert_phy(self):
+    def test_converter_argoqc_convert_phy(self, tmp_path):
         """Test that no error is raised during execution of convert() function
         and that a parquet output is generated. This does not test the content
         of the parquet output.
@@ -694,8 +694,10 @@ class TestConverter:
         converterPHY = ConverterArgoQC(
             db_type="PHY",
         )
+        converterPHY.outdir_pq = tmp_path / "parquet"
+        converterPHY.tmp_path = str(tmp_path / "tmp") + "/"
 
-        pq_files = glob.glob(converterPHY.input_path + '/*.parquet')
+        pq_files = glob.glob(str(converterPHY.input_path / '*.parquet'))
         assert len(pq_files) > 0
         random_file = random.choice(pq_files)
 
@@ -704,7 +706,7 @@ class TestConverter:
 
         converterPHY.convert(random_file)
 
-    def test_converter_argoqc_convert_bgc(self):
+    def test_converter_argoqc_convert_bgc(self, tmp_path):
         """Test that no error is raised during execution of convert() function
         and that a parquet output is generated. This does not test the content
         of the parquet output.
@@ -712,8 +714,10 @@ class TestConverter:
         converterBGC = ConverterArgoQC(
             db_type="BGC",
         )
+        converterBGC.outdir_pq = tmp_path / "parquet"
+        converterBGC.tmp_path = str(tmp_path / "tmp") + "/"
 
-        pq_files = glob.glob(converterBGC.input_path + '/*.parquet')
+        pq_files = glob.glob(str(converterBGC.input_path / '*.parquet'))
         assert len(pq_files) > 0
         random_file = random.choice(pq_files)
 
