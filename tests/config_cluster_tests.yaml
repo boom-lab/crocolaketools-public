@@ -11,5 +11,13 @@ TESTS:
     memory_limit: '2GB'
     processes: True
 
+# Multiworker and multithread test settings
+TESTS_MULTIWORKER:
+    threads_per_worker: 2
+    n_workers: 2
+    memory_limit: '2GB'
+    processes: True
+
 # add here if special cases are needed, remember to update test files
-# accordingly (e.g. GOLDEN_REGISTRY in golden_registry.py; dask_client in test_golden.test_golden_argo_gdac)
+# accordingly (e.g. GOLDEN_REGISTRY in golden_registry.py; dask_client in
+# test_golden.test_golden_argo_gdac)

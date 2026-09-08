@@ -41,6 +41,10 @@ class GoldenTarget(NamedTuple):
     # convert(filenames=<chunk files>). Set to the chunk_profile to use when
     # this two-phase flow is required; leave None everywhere else.
     chunk_profile: Optional[int] = None
+    # Alias to run the same converter under a different cluster_key and compare
+    # against another entry's golden files; golden_name points at the directory
+    # under tests/golden/ to compare against.
+    golden_name: Optional[str] = None
 
 
 GOLDEN_REGISTRY = [
@@ -53,6 +57,12 @@ GOLDEN_REGISTRY = [
     GoldenTarget("Saildrones_PHY", ConverterSaildrones, "PHY", "TESTS", ["PRES"] + GSW_COLUMNS),
     GoldenTarget("Saildrones_BGC", ConverterSaildrones, "BGC", "TESTS", ["PRES"] + GSW_COLUMNS),
     GoldenTarget("OleanderXBT_PHY", ConverterOleanderXBT, "PHY", "TESTS", ["PRES"]),
+
+    # Golden tests run on different multiworker and multithread configurations
+    GoldenTarget("Saildrones_BGC@2x2", ConverterSaildrones, "BGC", "TESTS_MULTIWORKER",
+                 ["PRES"] + GSW_COLUMNS, golden_name="Saildrones_BGC"),
+    GoldenTarget("ARGO-QC_BGC@2x2", ConverterArgoQC, "BGC", "TESTS_MULTIWORKER",
+                 GSW_COLUMNS, golden_name="ARGO-QC_BGC"),
 ]
 
 

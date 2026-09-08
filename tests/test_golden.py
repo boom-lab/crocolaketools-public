@@ -115,11 +115,19 @@ def test_golden(golden_target, dask_client, tmp_path, request):
 
     actual = dd.read_parquet(converter.outdir_pq).compute()
 
-    target_dir = GOLDEN_DIR / golden_target.name
+    # use alias (golden_name) to run test with different settings (e.g. multiple
+    # workers) and compare against base test (name)
+    golden_name = golden_target.golden_name or golden_target.name
+    target_dir = GOLDEN_DIR / golden_name
     expected_dir = target_dir / "expected"
     summary_path = target_dir / "expected_summary.json"
 
     if request.config.getoption("--update-golden"):
+        if golden_target.golden_name is not None:
+            pytest.skip(
+                f"{golden_target.name} is an alias for {golden_name}: "
+                "regenerate the primary target instead"
+            )
         if expected_dir.exists():
             shutil.rmtree(expected_dir)
         expected_dir.mkdir(parents=True, exist_ok=True)
@@ -129,7 +137,8 @@ def test_golden(golden_target, dask_client, tmp_path, request):
 
     assert expected_dir.exists(), (
         f"No golden files for {golden_target.name} at {expected_dir}. "
-        "Run `pytest tests/test_golden.py --update-golden` to seed them."
+        f"Run `pytest tests/test_golden.py --update-golden -k {golden_name}` "
+        "to seed them."
     )
 
     expected = dd.read_parquet(expected_dir).compute()
