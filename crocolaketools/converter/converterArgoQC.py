@@ -187,7 +187,7 @@ class ConverterArgoQC(Converter):
         for param in param_basenames:
             data_mode_col = param + "_DATA_MODE" if db_type == "BGC" else "DATA_MODE"
 
-            condition_1 = ( ~df[param+"_ADJUSTED"].isna() ) & ( df[param + "_ADJUSTED_QC"].isin([1, 2, 5, 8]) ) & ( df[data_mode_col].isin(["A", "D"]) )
+            condition_1 = ( ~df[param+"_ADJUSTED"].isna() ) & ( df[param + "_ADJUSTED_QC"].isin([2, 5, 8]) ) & ( df[data_mode_col].isin(["A", "D"]) )
             if param in core_vars:
                 condition_2 = ( ~df[param].isna() ) & ( df[param+"_QC"].isin([1, 2, 5, 8]) ) & ( df[data_mode_col] == "R" )
                 condition_3 = ~(condition_1 | condition_2)
