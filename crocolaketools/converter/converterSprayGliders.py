@@ -204,6 +204,10 @@ class ConverterSprayGliders(Converter):
 
         ddf = dd.from_delayed(results)
 
+        # Stores the intermediate result in memory
+        # This prevents the task graph from becoming too large
+        ddf = ddf.persist()
+
         self.call_guess_schema = True
 
         return ddf

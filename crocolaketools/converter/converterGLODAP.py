@@ -177,6 +177,7 @@ class ConverterGLODAP(Converter):
 
         def compute_hash(df, cols, hash_col="hash"):
             # gives unique hash for each sequence of values of columns cols
+            df = df.copy()
             concat = df[cols].astype(str).agg('-'.join, axis=1)
             df[hash_col] = pd.util.hash_pandas_object(concat, index=False).astype('int64')
             return df
@@ -260,6 +261,7 @@ class ConverterGLODAP(Converter):
         ]
         unique_hash1_expocode_partitions = [p.repartition(npartitions=1) for p in unique_hash1_expocode_partitions]
         unique_hash1_repartitioned = dd.concat(unique_hash1_expocode_partitions)
+        # required, not an optimization: shifting() below is row-order dependent
         unique_hash1_repartitioned = unique_hash1_repartitioned.persist()
 
         def shifting(df):
@@ -312,6 +314,8 @@ class ConverterGLODAP(Converter):
 
         """
 
+        df = df.copy()
+
         # GLODAP's quality control columns end with "f" (e.g. "nitratef")
         # and good values are 0 or 2
         condition = ~df[param].isin([0, 2])
@@ -336,6 +340,8 @@ class ConverterGLODAP(Converter):
         df -- updated dataframe
 
         """
+
+        df = df.copy()
 
         params = ["temperature", "pressure"]
         df[params] = df[params].replace(-9999.0, pd.NA)

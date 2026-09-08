@@ -623,6 +623,7 @@ class Converter:
 
         # note that the following only works if the wrapped LONGITUDE must be in [-180,180) range
         def modulo_longitude(df):
+            # safe to re-run: (x-180) % 360 - 180 is the identity on [-180,180)
             # this turns 180 into -180
             #
             # not elegant but pyarrow backend does not support modulo operator

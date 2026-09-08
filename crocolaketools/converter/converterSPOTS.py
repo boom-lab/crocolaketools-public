@@ -184,6 +184,7 @@ class ConverterSPOTS(Converter):
     def add_datetime(self, df):
         """Add a single datetime column from SPOTS date and time columns."""
 
+        df = df.copy()
         date_str = df["DATE"].astype("Int64").astype(str)
         time_str = df["TIME"].astype("Int64").astype(str).str.zfill(4)
         df["JULD"] = pd.to_datetime(
@@ -254,6 +255,8 @@ class ConverterSPOTS(Converter):
         df -- updated dataframe
 
         """
+
+        df = df.copy()
 
         # SPOTS' quality control columns end with "_FLAG_W" (e.g. "NITRAT_FLAG_W")
         # and 2 means usable

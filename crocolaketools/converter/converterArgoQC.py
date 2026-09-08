@@ -133,21 +133,6 @@ class ConverterArgoQC(Converter):
         ddf -- updated dask dataframe
         """
 
-        data_mode_col = "DATA_MODE"
-        meta = {}
-        for col in ddf.columns:
-            meta[col] = ddf.dtypes[col]
-
-        #generate meta for each parameter
-        for param in self.param_basenames:
-            for p in [param, param+"_QC", param+"_ERROR"]:
-                if p == param:
-                    meta[p] = "float32[pyarrow]"
-                elif p == param+"_QC":
-                    meta[p] = "uint8[pyarrow]"
-                else:
-                    meta[p] = "float32[pyarrow]"
-
         # keep best values for each parameter
         ddf = ddf.map_partitions(self.keep_best_values, self.param_basenames, self.db_type)
 
@@ -244,6 +229,8 @@ class ConverterArgoQC(Converter):
         Returns:
         df  --  updated dataframe
         """
+
+        df = df.copy()
 
         # Find good QC values
         condition_pos_juld = ( df["POSITION_QC"].isin([1, 2, 5, 8]) ) & ( df["JULD_QC"].isin([1, 2, 5, 8]) )
