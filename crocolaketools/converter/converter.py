@@ -11,11 +11,13 @@
 import os
 import yaml
 import warnings
+import dask
 import dask.dataframe as dd
 from dask.distributed import Lock
 import gsw
 import importlib.resources
 import numpy as np
+from pathlib import Path
 import pandas as pd
 import pyarrow as pa
 import pyarrow.parquet as pq
@@ -24,6 +26,9 @@ import xarray as xr
 from crocolaketools import db_names,db_params
 from crocolaketools.config import config_paths as cfgp
 from crocolaketools.converter import units_conversion
+
+import logging
+logging.getLogger("distributed.shuffle._scheduler_plugin").setLevel(logging.ERROR)
 ##########################################################################
 
 
@@ -80,9 +85,9 @@ class Converter:
             print("Converter configuration:")
             print(config)
 
-            input_path = get_config_paths_field(db + "_" + db_type, "input_path")
-            outdir_pq = get_config_paths_field(db + "_" + db_type, "outdir_pq")
-            outdir_schema = get_config_paths_field(db + "_" + db_type, "outdir_schema")
+            input_path = cfgp.get_config_paths_field(db + "_" + db_type, "input_path")
+            outdir_pq = cfgp.get_config_paths_field(db + "_" + db_type, "outdir_pq")
+            outdir_schema = cfgp.get_config_paths_field(db + "_" + db_type, "outdir_schema")
 
             fname_pq = config["fname_pq"]
             add_derived_vars = config["add_derived_vars"]
@@ -117,26 +122,22 @@ class Converter:
 
         if input_path is None:
             raise ValueError("No input file path provided.")
-        if input_path[-1] != "/":
-            input_path = input_path + "/"
         if len(os.listdir(input_path))==0:
             raise ValueError(f"Input folder {input_path} is empty. If you are using config.yaml, is the relative path correct?")
         self.input_path = input_path
-        print("Original files read from " + self.input_path)
+        print("Original files read from " + str(self.input_path))
 
         if outdir_schema is None:
-            self.outdir_schema = "./schemas/"
+            self.outdir_schema = Path("./schemas/")
         else:
             self.outdir_schema = outdir_schema
-        print("Schema(s) will be stored at " + self.outdir_schema)
+        print("Schema(s) will be stored at " + str(self.outdir_schema))
 
         if outdir_pq is None:
-            self.outdir_pq = "./parquet/"
+            self.outdir_pq = Path("./parquet/")
         else:
             self.outdir_pq = outdir_pq
-            if self.outdir_pq[-1] != "/":
-                self.outdir_pq = self.outdir_pq + "/"
-        print("Parquet database will be stored at " + self.outdir_pq)
+        print("Parquet database will be stored at " + str(self.outdir_pq))
 
         if fname_pq is None:
             self.fname_pq = self.db+"_"+self.db_type+".parquet"
@@ -224,10 +225,10 @@ class Converter:
         if filenames is None:
             if filepath is None:
                 guess_path = self.input_path
-                warnings.warn("Filename(s) not provided, guessing from input path: " + guess_path)
+                warnings.warn("Filename(s) not provided, guessing from input path: " + str(guess_path))
             else:
                 guess_path = filepath
-                warnings.warn("Filename(s) not provided, guessing from provided file path: " + guess_path)
+                warnings.warn("Filename(s) not provided, guessing from provided file path: " + str(guess_path))
             filenames = os.listdir(guess_path)
         print("List of files to convert: ", filenames)
 
@@ -251,6 +252,9 @@ class Converter:
             ddf = self.add_derived_variables(ddf)
 
         ddf = self.convert_units(ddf)
+        # Materialize here to prevent later shuffles (drop_duplicates,
+        # sort_rows) to silently re-applying the conversion multiple times
+        ddf = ddf.persist()
 
         ddf = self.reorder_columns(ddf)
 
@@ -343,7 +347,7 @@ class Converter:
 
         print(f"{self.fname_pq}.parquet")
 
-        print("Saving " + self.db + ", " + self.db_type + " version, to " + self.outdir_pq)
+        print("Saving " + self.db + ", " + self.db_type + " version, to " + str(self.outdir_pq))
 
         os.makedirs(self.outdir_pq, exist_ok=True)
 
@@ -574,25 +578,29 @@ class Converter:
         """
 
         if isinstance(df,pd.DataFrame):
-            ddf = dd.from_pandas(df, npartitions=1)
             flag_pd = True
-            flag_dd = False
         elif isinstance(df,dd.DataFrame):
-            ddf = df
             flag_pd = False
-            flag_dd = True
         else:
             raise TypeError(
                 "df is not a pandas or dask dataframe, I cannot"
                 "wrap longitude values"
             )
 
+        if flag_pd:
+            lon_min = df["LONGITUDE"].min()
+            lon_max = df["LONGITUDE"].max()
+        else:
+            lon_min, lon_max = dask.compute(
+                df["LONGITUDE"].min(), df["LONGITUDE"].max()
+            )
+
         # if LONGITUDE is in [0,360) range, it is shifted to [-180,180) range if
         # flag is passed
         if (
-                ddf["LONGITUDE"].min().compute() >= 0
-                and ddf["LONGITUDE"].max().compute() >= 180
-                and ddf["LONGITUDE"].max().compute() <= 360
+                lon_min >= 0
+                and lon_max >= 180
+                and lon_max <= 360
         ):
             # it might be that this dataset uses LONGITUDE in [0,360) range
             # instead of [-180,180). The converter expects the latter range by
@@ -609,29 +617,29 @@ class Converter:
             else:
                 if shift_value is None:
                     shift_value = -180
-                ddf["LONGITUDE"] = ddf["LONGITUDE"] + shift_value
+                if flag_pd:
+                    df = df.copy()
+                df["LONGITUDE"] = df["LONGITUDE"] + shift_value
 
         # note that the following only works if the wrapped LONGITUDE must be in [-180,180) range
         def modulo_longitude(df):
+            # safe to re-run: (x-180) % 360 - 180 is the identity on [-180,180)
             # this turns 180 into -180
             #
             # not elegant but pyarrow backend does not support modulo operator
+            df = df.copy()
             df["LONGITUDE"] = df["LONGITUDE"].astype("float64")
             df["LONGITUDE"] = (df["LONGITUDE"] - 180) % 360 - 180
             df["LONGITUDE"] = df["LONGITUDE"].astype("float64[pyarrow]")
             return df
 
-        ddf = ddf.map_partitions(
-                modulo_longitude,
-                meta=ddf
-        )
-
         if flag_pd:
-            df = ddf.compute()
-        elif flag_dd:
-            df = ddf
+            df = modulo_longitude(df)
         else:
-            raise TypeError("input dataframe is not a pandas or dask dataframe.")
+            df = df.map_partitions(
+                    modulo_longitude,
+                    meta=df
+            )
 
         return df
 
@@ -667,6 +675,8 @@ class Converter:
         df -- dataframe containign absolute salinity, conservative temperature,
               and potential density anomaly
         """
+        # prevents pandas from raising SettingWithCopyWarning.
+        df = df.copy()
 
         # absolute salinity
         df['ABS_SAL_COMPUTED'] = gsw.conversions.SA_from_SP(

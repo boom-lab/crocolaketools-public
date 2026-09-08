@@ -112,7 +112,7 @@ class ConverterSaildrones(Converter):
         if filename is None:
             raise ValueError("No filename provided for Saildrone database.")
 
-        input_fname = self.input_path + filename
+        input_fname = self.input_path / filename
         print("Reading file: ", input_fname)
 
         # Hold lock for the entire NetCDF operation to prevent race conditions
@@ -163,15 +163,8 @@ class ConverterSaildrones(Converter):
             chunk_size = rows_per_chunk
             chunks = [df[i:i + chunk_size] for i in range(0, len(df), chunk_size)]
             
-            # create delayed objects for parallel processing
-            delayed_chunks = []
-            for chunk in chunks:
-                delayed_chunk = dask.delayed(self.process_df)(chunk, invars)
-                delayed_chunks.append(delayed_chunk)
-            
-            # compute all chunks in parallel
-            processed_chunks = dask.compute(*delayed_chunks)
-            
+            processed_chunks = [self.process_df(chunk, invars) for chunk in chunks]
+
             # combine all processed chunks
             df = pd.concat(processed_chunks, ignore_index=True)
             return df
@@ -308,6 +301,9 @@ class ConverterSaildrones(Converter):
                 print("Adding derived variables")
                 ddf = self.compute_derived_variables(ddf)
             ddf = self.convert_units(ddf)
+            # Materialize now to defend from later cross-partition shuffles that
+            # could reapply compute
+            ddf = ddf.persist()
             ddf = self.reorder_columns(ddf)
             ddf = ddf.drop_duplicates()
             self.to_parquet(ddf)

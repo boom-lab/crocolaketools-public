@@ -620,6 +620,7 @@ params["Saildrones"] = [
     'BKSCT_RED_MEAN',
     'TEMP_SBE37_STDDEV',
     'TEMP_CTD_STDDEV',
+    'TEMP_CTD_RBR_STDDEV',
     'TEMP_DEPTH_HALFMETER_STDDEV',
     'SAL_SBE37_STDDEV',
     'SAL_RBR_STDDEV',
@@ -749,6 +750,9 @@ params["OleanderXBT2CROCOLAKE"] = {
     'depth' : 'DEPTH',
     'temp' : 'TEMP',
 }
+
+params["CROCOLAKE2OleanderXBT"] = {v: k for k, v in
+                                    params["OleanderXBT2CROCOLAKE"].items()}
 
 #------------------------------------------------------------------------------#
 # SPOTS

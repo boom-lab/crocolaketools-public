@@ -9,10 +9,10 @@
 
 ##########################################################################
 import os
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 import pytest
 
-from crocolaketools.downloader.downloaderSaildrones import DownloaderSaildrones, SAILDRONES_SERVER, SAILDRONES_URLS
+from crocolaketools.downloader.downloaderSaildrones import DownloaderSaildrones, SAILDRONES_URLS
 from crocolaketools.downloader.downloader import Downloader
 ##########################################################################
 
@@ -35,86 +35,50 @@ class TestDownloaderSaildronesInit:
 
 
 class TestSaildronesDownloadMethod:
-    """Testing saildrones downloading logic sequence"""
+    """Testing saildrones downloading logic sequence."""
 
-    # NOTE: Temporarily disabled — saildrones_download() has no requests.head
-    # reachability check, so this test's mock of requests.head is never hit and
-    # the code falls through past the mocks.
-    @pytest.mark.skip(reason="disabled pending plan §0.8 test-suite audit — not optimized/mocked correctly, causes live network calls")
-    @patch("crocolaketools.downloader.downloaderSaildrones.requests.head")
+    @patch.object(DownloaderSaildrones, "unzip_file")
     @patch.object(DownloaderSaildrones, "_download_file")
-    def test_saildrones_download_success(self, mock_download, mock_head, tmp_path):
-        """Test full download when files don't exist locally."""
-        mock_head.return_value.ok = True
-        
-        dl = DownloaderSaildrones()
-        dl.input_path = str(tmp_path)
-        dl.overwrite = False
-        
-        # Test only the first url
-        with patch("crocolaketools.downloader.downloaderSaildrones.SAILDRONES_URLS", [SAILDRONES_URLS[0]]):
-            dl.saildrones_download()
-            
-        mock_download.assert_called_once()
-        mock_head.assert_called_once_with(SAILDRONES_SERVER, timeout=10)
-
-    # NOTE: disabled — skip-existing check tests local_nc_path but the test
-    # only stages the .zip, so the check never trips.
-    @pytest.mark.skip(reason="disabled pending plan §0.8 test-suite audit — not optimized/mocked correctly, causes live network calls")
-    @patch("crocolaketools.downloader.downloaderSaildrones.requests.head")
-    @patch.object(DownloaderSaildrones, "_download_file")
-    def test_saildrones_download_skip_existing(self, mock_download, mock_head, tmp_path):
-        """Test skip of existing files when overwrite is False."""
-        mock_head.return_value.ok = True
-        
-        dl = DownloaderSaildrones()
-        dl.input_path = str(tmp_path)
-        dl.overwrite = False
-        
-        # Create a mock file
-        test_file = tmp_path / os.path.basename(SAILDRONES_URLS[0])
-        test_file.touch()
-        
-        with patch("crocolaketools.downloader.downloaderSaildrones.SAILDRONES_URLS", [SAILDRONES_URLS[0]]):
-            dl.saildrones_download()
-            
-        mock_download.assert_not_called()
-
-    @patch("crocolaketools.downloader.downloaderSaildrones.requests.head")
-    @patch.object(DownloaderSaildrones, "_download_file")
-    def test_saildrones_download_overwrite(self, mock_download, mock_head, tmp_path):
-        """Test overwriting existing files when overwrite is True."""
-        mock_head.return_value.ok = True
-        
+    def test_saildrones_download_overwrite(self, mock_download, mock_unzip, tmp_path):
+        """Existing files are re-downloaded and extracted when overwrite=True."""
         dl = DownloaderSaildrones()
         dl.input_path = str(tmp_path)
         dl.overwrite = True
-        
-        # Create a mock file
-        test_file = tmp_path / os.path.basename(SAILDRONES_URLS[0])
-        test_file.touch()
-        
-        with patch("crocolaketools.downloader.downloaderSaildrones.SAILDRONES_URLS", [SAILDRONES_URLS[0]]):
-            dl.saildrones_download()
-            
-        mock_download.assert_called_once()
 
-    # NOTE: disabled — _download_file is not mocked here, and since
-    # saildrones_download() never calls requests.head, this test falls
-    # through into 23 real downloads from the live PMEL server (source
-    # of a 52s runtime / network violation).
-    @pytest.mark.skip(reason="disabled pending plan §0.8 test-suite audit — not optimized/mocked correctly, causes live network calls")
-    @patch("crocolaketools.downloader.downloaderSaildrones.requests.head")
-    def test_saildrones_download_server_down(self, mock_head, tmp_path):
-        """Verify error is raised if ERDDAP server is unreachable."""
-        import requests
-        mock_head.side_effect = requests.RequestException("Connection dropped")
+        url = SAILDRONES_URLS[0]
+        zip_fname = os.path.basename(url)
+        nc_fname = zip_fname.replace('.nc_.zip', '.nc')
+
+        # stage the extracted .nc, which is what the skip check actually tests
+        (tmp_path / nc_fname).touch()
+
+        with patch("crocolaketools.downloader.downloaderSaildrones.SAILDRONES_URLS", [url]):
+            dl.saildrones_download()
+
+        expected_zip = os.path.join(str(tmp_path), zip_fname)
+        mock_download.assert_called_once_with(url, expected_zip)
+        # unzip_file must be mocked too: _download_file is a mock, so no zip is
+        # written, and a real unzip_file would raise into saildrones_download's
+        # broad `except Exception` and let the test pass over a failed run
+        mock_unzip.assert_called_once_with(expected_zip)
+
         
+    @patch.object(DownloaderSaildrones, "unzip_file")
+    @patch.object(DownloaderSaildrones, "_download_file")
+    def test_saildrones_download_skip_existing(self, mock_download, mock_unzip, tmp_path):
+        """An already-extracted .nc is skipped when overwrite=False."""
         dl = DownloaderSaildrones()
         dl.input_path = str(tmp_path)
-        
-        with pytest.raises(RuntimeError):
+        dl.overwrite = False
+
+        url = SAILDRONES_URLS[0]
+        (tmp_path / os.path.basename(url).replace('.nc_.zip', '.nc')).touch()
+
+        with patch("crocolaketools.downloader.downloaderSaildrones.SAILDRONES_URLS", [url]):
             dl.saildrones_download()
+
+        mock_download.assert_not_called()
+        mock_unzip.assert_not_called()
 
 ##########################################################################
 

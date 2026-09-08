@@ -79,7 +79,7 @@ class ConverterGLODAP(Converter):
             filename = "GLODAPv3_Merged_Master_File.csv"
             print("Using default filename: ", filename)
 
-        input_fname = filename if os.path.isabs(filename) else self.input_path + filename
+        input_fname = filename if os.path.isabs(filename) else self.input_path / filename
         print("Reading GLODAP file: ", input_fname)
 
         # low_memory=False as GLODAP is a small db
@@ -132,6 +132,18 @@ class ConverterGLODAP(Converter):
                 params_to_check.append(param[:-1])
         ddf = ddf.persist()
 
+        # temperature and pressure have no dedicated QC flag column of their
+        # own, so bad values show up as GLODAP's -9999.0 sentinel fill value
+        # instead; replace it with NA before checking for all-NA rows
+        ddf = ddf.map_partitions(self.keep_best_pres_temp)
+        params_to_check.append("temperature")
+        ddf = ddf.persist()
+
+        # remove rows without a valid pressure reading
+        ddf = ddf.map_partitions(
+            super().remove_all_NAs, ["pressure"]
+        )
+
         # remove rows containing all NAs
         ddf = ddf.map_partitions(
             super().remove_all_NAs, params_to_check
@@ -165,6 +177,7 @@ class ConverterGLODAP(Converter):
 
         def compute_hash(df, cols, hash_col="hash"):
             # gives unique hash for each sequence of values of columns cols
+            df = df.copy()
             concat = df[cols].astype(str).agg('-'.join, axis=1)
             df[hash_col] = pd.util.hash_pandas_object(concat, index=False).astype('int64')
             return df
@@ -173,8 +186,9 @@ class ConverterGLODAP(Converter):
         # column instead of multiple columns at once
         cols = ["expocode", "cruise", "station", "region", "cast"]
         hash_col = "hash_0"
-        meta = ddf._meta
-        meta[hash_col] = 'int64'
+        # .copy() so the assignment does not mutate ddf's own _meta in place
+        meta = ddf._meta.copy()
+        meta[hash_col] = pd.Series(dtype="int64")
         ddf = ddf.map_partitions(
             lambda df: compute_hash(df, cols, hash_col=hash_col),
             meta=meta,
@@ -189,8 +203,8 @@ class ConverterGLODAP(Converter):
         # generate hash_1 for each of set of "metadata" that contains 1 or more casts:
         # in GLODAP, cast number resets when any in
         # ["expocode", "cruise", "station", "region"] changes
-        meta = unique_casts._meta
-        meta["hash_1"] = "int64"
+        meta = unique_casts._meta.copy()
+        meta["hash_1"] = pd.Series(dtype="int64")
         hash_by_cols = ["expocode", "cruise", "station", "region"]
         unique_casts = unique_casts.map_partitions(
             lambda df: compute_hash(df, hash_by_cols, hash_col="hash_1"),
@@ -247,6 +261,7 @@ class ConverterGLODAP(Converter):
         ]
         unique_hash1_expocode_partitions = [p.repartition(npartitions=1) for p in unique_hash1_expocode_partitions]
         unique_hash1_repartitioned = dd.concat(unique_hash1_expocode_partitions)
+        # required, not an optimization: shifting() below is row-order dependent
         unique_hash1_repartitioned = unique_hash1_repartitioned.persist()
 
         def shifting(df):
@@ -256,8 +271,8 @@ class ConverterGLODAP(Converter):
             df["sum_mcc"] = df["sum_mcc"].astype("int64")
             return df
 
-        meta = unique_hash1_repartitioned._meta
-        meta["sum_mcc"] = "int64"
+        meta = unique_hash1_repartitioned._meta.copy()
+        meta["sum_mcc"] = pd.Series(dtype="int64")
         pl = unique_hash1_repartitioned.map_partitions(len).compute()
         if (pl==0).any():
             empty_partitions = pl[pl==0].index.tolist()
@@ -299,6 +314,8 @@ class ConverterGLODAP(Converter):
 
         """
 
+        df = df.copy()
+
         # GLODAP's quality control columns end with "f" (e.g. "nitratef")
         # and good values are 0 or 2
         condition = ~df[param].isin([0, 2])
@@ -306,6 +323,28 @@ class ConverterGLODAP(Converter):
         # Find bad QC values
         df.loc[condition, param] = pd.NA
         df.loc[condition, param[:-1]] = pd.NA
+
+        return df
+
+#------------------------------------------------------------------------------#
+## Replace sentinel fill values for temperature and pressure
+    def keep_best_pres_temp(self,df):
+        """Replace GLODAP's -9999.0 sentinel fill value with NA for
+        temperature and pressure, which (unlike other parameters) have no
+        dedicated QC flag column of their own.
+
+        Arguments:
+        df -- a row or a partition of a pandas dataframe
+
+        Returns:
+        df -- updated dataframe
+
+        """
+
+        df = df.copy()
+
+        params = ["temperature", "pressure"]
+        df[params] = df[params].replace(-9999.0, pd.NA)
 
         return df
 

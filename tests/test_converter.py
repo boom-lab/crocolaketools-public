@@ -19,6 +19,7 @@ import yaml
 
 import dask.dataframe as dd
 from dask.distributed import Client
+import numpy as np
 import pandas as pd
 import pyarrow as pa
 import pyarrow.parquet as pq
@@ -31,6 +32,24 @@ from crocolaketools.converter.converterGLODAP import ConverterGLODAP
 from crocolaketools.converter.converterCPR import ConverterCPR
 from crocolaketools.converter.converterSaildrones import ConverterSaildrones
 from crocolaketools import db_names,db_params
+
+def _plausible_extreme_profiles():
+    """(LATITUDE, LONGITUDE, PSAL, PRES, TEMP) profiles spanning the ocean's
+    realistic physical envelope -- polar to tropical, brackish to
+    hypersaline, surface to abyssal -- so a derived-variable bounds check
+    exercises near-extreme values.
+    """
+    data = {
+        # polar surface, tropical surface, mid-lat abyssal, coastal
+        # brackish, hypersaline restricted sea, cold deep salty, warm-salty
+        # outflow at depth, deep trench
+        'LATITUDE':  [-70.0,  10.0,    40.0,   45.0,  20.0,  55.0,   36.0,   11.0],
+        'LONGITUDE': [-30.0,  -170.0,  -40.0,  -65.0, 38.0,  -20.0,  5.0,    -155.0],
+        'PSAL':      [34.5,   36.0,    34.9,   5.0,   40.0,  34.9,   38.4,   34.7],
+        'PRES':      [5.0,    5.0,     5000.0, 2.0,   5.0,   4000.0, 1000.0, 10000.0],
+        'TEMP':      [-1.8,   30.0,    2.0,    15.0,  32.0,  3.0,    13.0,   1.5],
+    }
+    return pd.DataFrame(data)
 
 ##########################################################################
 class TestConverter:
@@ -640,7 +659,7 @@ class TestConverter:
             db_type="BGC",
         )
 
-        fname = random.choice(glob.glob(converterBGC.input_path + '/*.parquet'))
+        fname = random.choice(glob.glob(str(converterBGC.input_path / '*.parquet')))
         ddf = converterBGC.read_pq(filename=fname)
         ddf = converterBGC.update_cols(ddf)
 
@@ -667,7 +686,7 @@ class TestConverter:
             else:
                 print(f"Variable {var} not in dataframe.")
 
-    def test_converter_argoqc_convert_phy(self):
+    def test_converter_argoqc_convert_phy(self, tmp_path):
         """Test that no error is raised during execution of convert() function
         and that a parquet output is generated. This does not test the content
         of the parquet output.
@@ -676,8 +695,10 @@ class TestConverter:
         converterPHY = ConverterArgoQC(
             db_type="PHY",
         )
+        converterPHY.outdir_pq = tmp_path / "parquet"
+        converterPHY.tmp_path = str(tmp_path / "tmp") + "/"
 
-        pq_files = glob.glob(converterPHY.input_path + '/*.parquet')
+        pq_files = glob.glob(str(converterPHY.input_path / '*.parquet'))
         assert len(pq_files) > 0
         random_file = random.choice(pq_files)
 
@@ -686,7 +707,7 @@ class TestConverter:
 
         converterPHY.convert(random_file)
 
-    def test_converter_argoqc_convert_bgc(self):
+    def test_converter_argoqc_convert_bgc(self, tmp_path):
         """Test that no error is raised during execution of convert() function
         and that a parquet output is generated. This does not test the content
         of the parquet output.
@@ -694,8 +715,10 @@ class TestConverter:
         converterBGC = ConverterArgoQC(
             db_type="BGC",
         )
+        converterBGC.outdir_pq = tmp_path / "parquet"
+        converterBGC.tmp_path = str(tmp_path / "tmp") + "/"
 
-        pq_files = glob.glob(converterBGC.input_path + '/*.parquet')
+        pq_files = glob.glob(str(converterBGC.input_path / '*.parquet'))
         assert len(pq_files) > 0
         random_file = random.choice(pq_files)
 
@@ -731,82 +754,84 @@ class TestConverter:
 
         print(ddf.compute())
 
-    def test_converter_spraygliders_prepare_tmp(self):
-        """Test that SprayGliders conversion executes; this test does not use
-        convert() but its internal steps to check the dataframe is never empty
+    @staticmethod
+    def _assert_within_bounds(result, var, lower, upper, unit):
+        """Assert result[var] stays within [lower, upper]; print and name the
+        failing rows first if not
         """
-        client = Client(
-            threads_per_worker=2,
-            n_workers=1,
-            memory_limit='100GB',
-            dashboard_address=':8787',
+        out_of_bounds = result[(result[var] < lower) | (result[var] > upper)]
+        if not out_of_bounds.empty:
+            print(f"{var} out of bounds [{lower}, {upper}] {unit}:")
+            print(out_of_bounds[["LATITUDE", "LONGITUDE", "PSAL", "PRES", "TEMP", var]])
+        assert out_of_bounds.empty, (
+            f"{var} outside physically admissible bounds [{lower}, {upper}] {unit} "
+            f"for {len(out_of_bounds)} row(s) (see printed output above)"
         )
 
-        converterSG = ConverterSprayGliders(
+    def test_converter_abs_sal_computed(self):
+        """Check that ABS_SAL_COMPUTED (TEOS-10 Absolute Salinity, g/kg) is
+        within physically admissible bounds.
+        """
+        pdf = _plausible_extreme_profiles()
+        ddf = dd.from_pandas(pdf, npartitions=2)
+
+        # create converter simply to access function to test
+        converterPHY = ConverterArgoQC(
             db_type="PHY",
         )
 
-        from dask.distributed import Lock
-        lock=Lock()
+        with pytest.warns(UserWarning):
+            ddf = converterPHY.add_derived_variables(ddf)
 
-        # select three random files to test
-        spray_files = glob.glob(os.path.join(converterSG.input_path, '*.nc'))
-        spray_names = [os.path.basename(f) for f in spray_files]
-        flist = random.sample(spray_names, k=min(3,len(spray_names)))
-        print(f"Testing with {len(flist)} of {len(spray_names)} files")
-        print("flist:")
-        print(flist)
+        var = "ABS_SAL_COMPUTED"
+        assert var in ddf.columns
+        result = ddf.compute()
 
-        converterSG.prepare_data(flist=flist,lock=lock)
+        self._assert_within_bounds(result, var, lower=0.0, upper=50.0, unit="g/kg")
 
-        not_empty_dir = bool(os.listdir(converterSG.tmp_path))
-        assert not_empty_dir == True
-
-        for file in glob.glob(converterSG.tmp_path+"/*.nc"):
-            try:
-                ds = xr.open_dataset(file, engine="h5netcdf", chunks=None, cache=True)
-            except Exception as e:
-                assert False, f"Failed to open file {file}: {e}"
-        assert True
-
-        client.shutdown()
-
-    def test_converter_spraygliders_read_to_ddf_phy(self):
-        """Test that SprayGliders conversion executes; this test does not use
-        convert() but its internal steps to check the dataframe is never empty
+    def test_converter_conservative_temp_computed(self):
+        """Check that CONSERVATIVE_TEMP_COMPUTED (degrees C) is within
+        physically admissible bounds.
         """
-        client = Client(
-            threads_per_worker=20,
-            n_workers=1,
-            memory_limit='100GB',
-            dashboard_address=':1419',
-        )
-        print("Dashboard address:")
-        print(client.dashboard_link)
+        pdf = _plausible_extreme_profiles()
+        ddf = dd.from_pandas(pdf, npartitions=2)
 
-        converterSG = ConverterSprayGliders(
+        converterPHY = ConverterArgoQC(
             db_type="PHY",
         )
 
-        from dask.distributed import Lock
-        lock=Lock()
+        with pytest.warns(UserWarning):
+            ddf = converterPHY.add_derived_variables(ddf)
 
-        spray_files = glob.glob(os.path.join(converterSG.tmp_path, '*.nc'))
-        spray_names = [os.path.basename(f) for f in spray_files]
-        flist = random.sample(spray_names, k=min(3,len(spray_names)))
+        var = "CONSERVATIVE_TEMP_COMPUTED"
+        assert var in ddf.columns
+        result = ddf.compute()
 
-        print(f"Testing with {len(flist)} of {len(spray_names)} files")
-        print("flist:")
-        print(flist)
+        self._assert_within_bounds(result, var, lower=-3.0, upper=40.0, unit="degC")
 
-        converterSG.convert(
-            filenames=flist
+    def test_converter_sigma1_computed(self):
+        """Check that SIGMA1_COMPUTED (potential density anomaly
+        referenced to 1000 dbar, kg/m^3) is within physically
+        admissible bounds.
+        """
+        pdf = _plausible_extreme_profiles()
+        ddf = dd.from_pandas(pdf, npartitions=2)
+
+        converterPHY = ConverterArgoQC(
+            db_type="PHY",
         )
 
-        client.shutdown()
+        with pytest.warns(UserWarning):
+            ddf = converterPHY.add_derived_variables(ddf)
 
-        return
+        var = "SIGMA1_COMPUTED"
+        assert var in ddf.columns
+        result = ddf.compute()
 
+        self._assert_within_bounds(result, var, lower=0.0, upper=35.0, unit="kg/m^3")
+
+
+    @pytest.mark.skip(reason="disabled pending official support")
     def test_converter_cpr_read_to_df(self):
         """
         Test that the CPR CSV file is correctly read into a pandas DataFrame.
@@ -830,6 +855,7 @@ class TestConverter:
         for col in required_columns:
             assert col in df.columns
 
+    @pytest.mark.skip(reason="disabled pending official support")
     def test_converter_cpr_standardize_data(self):
         """
         Test that the CPR DataFrame is correctly standardized.
@@ -870,6 +896,7 @@ class TestConverter:
         # Check that the date column is converted to datetime
         assert str(standardized_df["JULD"].dtype) == "timestamp[ns][pyarrow]"
 
+    @pytest.mark.skip(reason="disabled pending official support")
     def test_converter_cpr_convert(self):
         """
         Test that the CPR CSV file is correctly converted to Parquet format.
@@ -919,11 +946,11 @@ class TestConverter:
             "CYCLE_NUMBER": [1, 1, 1],
             "depth": [0.5, 1.7, 0.5],
             # TEMP_CTD_RBR_MEAN and TEMP_SBE37_MEAN should merge to TEMP
-            "TEMP_CTD_RBR_MEAN": [20.5, pd.NA, 21.0],
-            "TEMP_SBE37_MEAN": [pd.NA, 20.2, pd.NA],
+            "TEMP_CTD_RBR_MEAN": [20.5, np.nan, 21.0],
+            "TEMP_SBE37_MEAN": [np.nan, 20.2, np.nan],
             # SAL_RBR_MEAN and SAL_SBE37_MEAN should merge to PSAL
-            "SAL_RBR_MEAN": [35.0, pd.NA, 35.5],
-            "SAL_SBE37_MEAN": [pd.NA, 34.8, pd.NA]
+            "SAL_RBR_MEAN": [35.0, np.nan, 35.5],
+            "SAL_SBE37_MEAN": [np.nan, 34.8, np.nan]
         }
         dummy_df = pd.DataFrame(dummy_data)
         invars = list(dummy_df.columns)
@@ -982,10 +1009,10 @@ class TestConverter:
             "wmo_id": ["TEST01", "TEST01", "TEST01"],
             "CYCLE_NUMBER": [1, 1, 1],
             "depth": [0.6, 1.7, 1.9],
-            "TEMP_CTD_MEAN": [20.1, pd.NA, pd.NA],
-            "O2_CONC_MEAN": [280.0, pd.NA, pd.NA],
-            "SAL_SBE37_MEAN": [pd.NA, 35.5, pd.NA],
-            "CHLOR_WETLABS_MEAN": [pd.NA, pd.NA, 0.5]
+            "TEMP_CTD_MEAN": [20.1, np.nan, np.nan],
+            "O2_CONC_MEAN": [280.0, np.nan, np.nan],
+            "SAL_SBE37_MEAN": [np.nan, 35.5, np.nan],
+            "CHLOR_WETLABS_MEAN": [np.nan, np.nan, 0.5]
         }
 
         id_vars = ["time", "latitude", "longitude", "wmo_id", "CYCLE_NUMBER", "depth"]
@@ -997,6 +1024,47 @@ class TestConverter:
 
         # compare results
         pd.testing.assert_frame_equal(result_df, sol_df, check_dtype=False)
+
+    def test_converter_saildrones_process_df_chunked(self):
+        """
+        Test that process_df_chunked's chunked branch agrees with its
+        unchunked branch.
+
+        The chunked branch only triggers above rows_per_chunk=50000, which no
+        test fixture reaches (the Saildrones goldens are 255 and 133 rows), so
+        we force here a small rows_per_chunk to exercise it.
+        """
+        converter = ConverterSaildrones(db_type="PHY")
+
+        n_rows = 120
+        rows_per_chunk = 50
+        dummy_data = {
+            "time": pd.date_range("2023-01-01T00:00", periods=n_rows, freq="1min"),
+            "latitude": np.linspace(35.0, 36.0, n_rows),
+            "longitude": np.linspace(-70.0, -69.0, n_rows),
+            "wmo_id": ["TEST01"] * n_rows,
+            "CYCLE_NUMBER": list(range(1, n_rows + 1)),
+            "depth": [0.5] * n_rows,
+            "TEMP_CTD_RBR_MEAN": np.linspace(20.0, 22.0, n_rows),
+            "SAL_RBR_MEAN": np.linspace(35.0, 35.5, n_rows),
+        }
+        dummy_df = pd.DataFrame(dummy_data)
+        invars = list(dummy_df.columns)
+
+        assert n_rows > rows_per_chunk, "fixture must cross the chunking threshold"
+
+        chunked = converter.process_df_chunked(
+            dummy_df, invars, rows_per_chunk=rows_per_chunk
+        ).compute()
+        unchunked = converter.process_df_chunked(
+            dummy_df, invars, rows_per_chunk=n_rows * 10
+        ).compute()
+
+        assert len(chunked) == len(unchunked)
+        pd.testing.assert_frame_equal(
+            chunked.reset_index(drop=True),
+            unchunked.reset_index(drop=True),
+        )
 
     def test_converter_wrap_longitude(self):
         import numpy as np

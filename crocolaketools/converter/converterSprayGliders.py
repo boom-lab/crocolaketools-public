@@ -53,7 +53,7 @@ class ConverterSprayGliders(Converter):
 
 #------------------------------------------------------------------------------#
 ## Chunk large netcdf files
-    def prepare_data(self, flist=None, lock=None):
+    def prepare_data(self, flist=None, lock=None, chunk_profile=None):
         """Read list of netCDF files and chunk them and save them into smaller
         files. This is because dask is not efficient at lazingly converting dask
         arrays to dask dataframes.
@@ -80,13 +80,13 @@ class ConverterSprayGliders(Converter):
         for fname in flist:
             if not fname.endswith(".nc"):
                 raise ValueError(f"{fname} does not end with '.nc'.")
-            self.prepare_nc(fname, lock)
+            self.prepare_nc(fname, lock, chunk_profile)
 
         return
 
 #------------------------------------------------------------------------------#
 ## Chunk large netcdf files
-    def prepare_nc(self,filename,lock):
+    def prepare_nc(self,filename,lock,chunk_profile=None):
         """Take a netCDF file and chunk it into smaller files
 
         Arguments:
@@ -94,11 +94,12 @@ class ConverterSprayGliders(Converter):
         lock -- dask lock to use for concurrency
         """
 
-        input_fname = self.input_path + filename
+        input_fname = self.input_path / filename
         print("Reading file: ", input_fname)
 
         # chunking is empirical to force small chunks
-        chunk_profile = 5000
+        if chunk_profile is None:
+            chunk_profile = 5000
         chunk_depth = -1
         chunk_trajectory = -1
         chunk_dict = {
@@ -110,7 +111,8 @@ class ConverterSprayGliders(Converter):
         ds = xr.open_dataset(
             input_fname,
             cache=False,
-            chunks=chunk_dict
+            chunks=chunk_dict,
+            engine="h5netcdf",
         )
 
         tmp_path = self.tmp_path
@@ -125,8 +127,8 @@ class ConverterSprayGliders(Converter):
         chunks_inits = np.roll(chunks_ends, 1) # slice(i,e) is [i:e], so i is included (it was e of the previous chunkm which was excluded)
         chunks_inits[0] = 0 # first index
 
-        tasks = [self.store_chunks(ds, j, chunk_init, chunk_end, filename, tmp_path, lock) for j, (chunk_init, chunk_end) in enumerate(zip(chunks_inits, chunks_ends))]
-        dask.compute(*tasks)
+        for j, (chunk_init, chunk_end) in enumerate(zip(chunks_inits, chunks_ends)):
+            self.store_chunks(ds, j, chunk_init, chunk_end, filename, tmp_path, lock)
 
         ds.close()
 
@@ -134,7 +136,6 @@ class ConverterSprayGliders(Converter):
 
 #------------------------------------------------------------------------------#
 ## Store netcdf chunks
-    @dask.delayed
     def store_chunks(self, ds, j, chunk_init, chunk_end, filename, tmp_path, lock):
         """Store j-th chunk of netCDF file
 
@@ -155,14 +156,19 @@ class ConverterSprayGliders(Converter):
         lock.acquire(timeout=600)
 
         try:
-            # load into memory the slice of ds that corresponds to chunk
-            ds_tmp = ds.isel(profile=slice(chunk_init, chunk_end)).compute()
+            # load into memory the slice of ds that corresponds to chunk;
+            # pinned to the synchronous scheduler so it stays local and the
+            # open h5netcdf handle in ds is never serialized to a worker
+            ds_tmp = ds.isel(profile=slice(chunk_init, chunk_end)).compute(
+                scheduler="synchronous"
+            )
 
             # store slice to netCDF file
             ds_tmp.to_netcdf(
                 chunk_filepath,
                 engine="netcdf4"
             )
+            del ds_tmp
 
         except Exception as e:
             print(f"Error writing file {chunk_filepath}: {e}")
@@ -197,6 +203,10 @@ class ConverterSprayGliders(Converter):
             results.append(proc_result)
 
         ddf = dd.from_delayed(results)
+
+        # Stores the intermediate result in memory
+        # This prevents the task graph from becoming too large
+        ddf = ddf.persist()
 
         self.call_guess_schema = True
 
