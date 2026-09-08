@@ -36,6 +36,22 @@ def dask_client(request):
     client.close()
 
 # ============================================================================
+# Network guardrail
+# ============================================================================
+
+def pytest_collection_modifyitems(config, items):
+    """Fail any downloader test that opens a socket.
+
+    The tests in test_downloader* are meant to be fully mocked and should never
+    reach the network, so a socket here means a mock missed the method the code
+    actually calls. Fix the mock, do not allow the socket. Scoped by filename.
+
+    """
+    for item in items:
+        if item.path.name.startswith("test_downloader"):
+            item.add_marker(pytest.mark.disable_socket)
+
+# ============================================================================
 # Path Fixtures
 # ============================================================================
 
