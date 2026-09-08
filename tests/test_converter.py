@@ -1025,6 +1025,47 @@ class TestConverter:
         # compare results
         pd.testing.assert_frame_equal(result_df, sol_df, check_dtype=False)
 
+    def test_converter_saildrones_process_df_chunked(self):
+        """
+        Test that process_df_chunked's chunked branch agrees with its
+        unchunked branch.
+
+        The chunked branch only triggers above rows_per_chunk=50000, which no
+        test fixture reaches (the Saildrones goldens are 255 and 133 rows), so
+        we force here a small rows_per_chunk to exercise it.
+        """
+        converter = ConverterSaildrones(db_type="PHY")
+
+        n_rows = 120
+        rows_per_chunk = 50
+        dummy_data = {
+            "time": pd.date_range("2023-01-01T00:00", periods=n_rows, freq="1min"),
+            "latitude": np.linspace(35.0, 36.0, n_rows),
+            "longitude": np.linspace(-70.0, -69.0, n_rows),
+            "wmo_id": ["TEST01"] * n_rows,
+            "CYCLE_NUMBER": list(range(1, n_rows + 1)),
+            "depth": [0.5] * n_rows,
+            "TEMP_CTD_RBR_MEAN": np.linspace(20.0, 22.0, n_rows),
+            "SAL_RBR_MEAN": np.linspace(35.0, 35.5, n_rows),
+        }
+        dummy_df = pd.DataFrame(dummy_data)
+        invars = list(dummy_df.columns)
+
+        assert n_rows > rows_per_chunk, "fixture must cross the chunking threshold"
+
+        chunked = converter.process_df_chunked(
+            dummy_df, invars, rows_per_chunk=rows_per_chunk
+        ).compute()
+        unchunked = converter.process_df_chunked(
+            dummy_df, invars, rows_per_chunk=n_rows * 10
+        ).compute()
+
+        assert len(chunked) == len(unchunked)
+        pd.testing.assert_frame_equal(
+            chunked.reset_index(drop=True),
+            unchunked.reset_index(drop=True),
+        )
+
     def test_converter_wrap_longitude(self):
         import numpy as np
 

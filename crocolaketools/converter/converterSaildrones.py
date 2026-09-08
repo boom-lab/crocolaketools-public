@@ -163,15 +163,8 @@ class ConverterSaildrones(Converter):
             chunk_size = rows_per_chunk
             chunks = [df[i:i + chunk_size] for i in range(0, len(df), chunk_size)]
             
-            # create delayed objects for parallel processing
-            delayed_chunks = []
-            for chunk in chunks:
-                delayed_chunk = dask.delayed(self.process_df)(chunk, invars)
-                delayed_chunks.append(delayed_chunk)
-            
-            # compute all chunks in parallel
-            processed_chunks = dask.compute(*delayed_chunks)
-            
+            processed_chunks = [self.process_df(chunk, invars) for chunk in chunks]
+
             # combine all processed chunks
             df = pd.concat(processed_chunks, ignore_index=True)
             return df
