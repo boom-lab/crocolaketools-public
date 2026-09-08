@@ -1,7 +1,6 @@
 # Note: including tests that are successful, ratcheting towards a full
-#       test-suite; existing tests outside of GLODAP, IOOSGliders, OleanderXBT,
-#       SprayGliders are not included at this time
-
+#       test-suite. Known coverage gaps: - argo_tools.py, downloaderArgoGDAC.py,
+#       converterArgoGDAC.py, converterSPOTS.py
 
 name: CI
 
@@ -35,9 +34,9 @@ jobs:
           python -m pip install -U pip
           pip install -e .
 
-      - name: Run downloader tests
+      - name: Run downloader and config-path tests
         run: |
-          pytest -ra --maxfail=1 --tb=short tests/test_downloader{GLODAP,IOOSGliders,OleanderXBT,SprayGliders,Saildrones}.py
+          pytest -ra --maxfail=1 --tb=short tests/test_downloader{GLODAP,IOOSGliders,OleanderXBT,SprayGliders,Saildrones}.py tests/test_config_paths.py
 
   tests-pip-converter:
     name: converter tests (pip, py=${{ matrix.python-version }})
@@ -143,10 +142,10 @@ jobs:
           python -m pip install -U pip
           pip install -e .
 
-      - name: Run downloader tests
+      - name: Run downloader and config-path tests
         shell: bash -l {0}
         run: |
-          pytest -ra --maxfail=1 --tb=short tests/test_downloader{GLODAP,IOOSGliders,OleanderXBT,SprayGliders,Saildrones}.py
+          pytest -ra --maxfail=1 --tb=short tests/test_downloader{GLODAP,IOOSGliders,OleanderXBT,SprayGliders,Saildrones}.py tests/test_config_paths.py
 
   tests-conda-converter:
     name: converter tests (conda, from environment.yml)
