@@ -185,8 +185,9 @@ class ConverterGLODAP(Converter):
         # column instead of multiple columns at once
         cols = ["expocode", "cruise", "station", "region", "cast"]
         hash_col = "hash_0"
-        meta = ddf._meta
-        meta[hash_col] = 'int64'
+        # .copy() so the assignment does not mutate ddf's own _meta in place
+        meta = ddf._meta.copy()
+        meta[hash_col] = pd.Series(dtype="int64")
         ddf = ddf.map_partitions(
             lambda df: compute_hash(df, cols, hash_col=hash_col),
             meta=meta,
@@ -201,8 +202,8 @@ class ConverterGLODAP(Converter):
         # generate hash_1 for each of set of "metadata" that contains 1 or more casts:
         # in GLODAP, cast number resets when any in
         # ["expocode", "cruise", "station", "region"] changes
-        meta = unique_casts._meta
-        meta["hash_1"] = "int64"
+        meta = unique_casts._meta.copy()
+        meta["hash_1"] = pd.Series(dtype="int64")
         hash_by_cols = ["expocode", "cruise", "station", "region"]
         unique_casts = unique_casts.map_partitions(
             lambda df: compute_hash(df, hash_by_cols, hash_col="hash_1"),
