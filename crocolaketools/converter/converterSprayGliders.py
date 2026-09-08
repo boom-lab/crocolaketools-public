@@ -127,8 +127,8 @@ class ConverterSprayGliders(Converter):
         chunks_inits = np.roll(chunks_ends, 1) # slice(i,e) is [i:e], so i is included (it was e of the previous chunkm which was excluded)
         chunks_inits[0] = 0 # first index
 
-        tasks = [self.store_chunks(ds, j, chunk_init, chunk_end, filename, tmp_path, lock) for j, (chunk_init, chunk_end) in enumerate(zip(chunks_inits, chunks_ends))]
-        dask.compute(*tasks)
+        for j, (chunk_init, chunk_end) in enumerate(zip(chunks_inits, chunks_ends)):
+            self.store_chunks(ds, j, chunk_init, chunk_end, filename, tmp_path, lock)
 
         ds.close()
 
@@ -136,7 +136,6 @@ class ConverterSprayGliders(Converter):
 
 #------------------------------------------------------------------------------#
 ## Store netcdf chunks
-    @dask.delayed
     def store_chunks(self, ds, j, chunk_init, chunk_end, filename, tmp_path, lock):
         """Store j-th chunk of netCDF file
 
@@ -157,14 +156,19 @@ class ConverterSprayGliders(Converter):
         lock.acquire(timeout=600)
 
         try:
-            # load into memory the slice of ds that corresponds to chunk
-            ds_tmp = ds.isel(profile=slice(chunk_init, chunk_end)).compute()
+            # load into memory the slice of ds that corresponds to chunk;
+            # pinned to the synchronous scheduler so it stays local and the
+            # open h5netcdf handle in ds is never serialized to a worker
+            ds_tmp = ds.isel(profile=slice(chunk_init, chunk_end)).compute(
+                scheduler="synchronous"
+            )
 
             # store slice to netCDF file
             ds_tmp.to_netcdf(
                 chunk_filepath,
                 engine="netcdf4"
             )
+            del ds_tmp
 
         except Exception as e:
             print(f"Error writing file {chunk_filepath}: {e}")
