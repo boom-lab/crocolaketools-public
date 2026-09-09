@@ -10,8 +10,6 @@
 ##########################################################################
 import argparse
 import os
-import importlib.resources
-import yaml
 from warnings import simplefilter
 from datetime import datetime
 
@@ -20,6 +18,7 @@ import pandas as pd
 # ignore pandas "educational" performance warnings
 simplefilter(action="ignore", category=pd.errors.PerformanceWarning)
 from dask.distributed import Client, Lock
+from crocolaketools.config import config_paths as cfgp
 from crocolaketools.converter.converterSaildrones import ConverterSaildrones
 
 import functools
@@ -28,9 +27,7 @@ print = functools.partial(print, flush=True)
 
 def saildrones2parquet(saildrones_path=None, outdir_pqt=None, fname_pq=None, use_config_file=None):
 
-    config_path = importlib.resources.files("crocolaketools.config").joinpath("config_cluster.yaml")
-    config_cluster = yaml.safe_load(open(config_path))
-    client = Client(**config_cluster["SAILDRONES"])
+    client = Client(**cfgp.get_config_cluster_db_dict("SAILDRONES"))
 
     if not use_config_file:
         print("Using user-defined configuration")

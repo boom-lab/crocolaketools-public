@@ -9,7 +9,6 @@
 ## @date Fri 13 Mar 2026
 
 ##########################################################################
-import os
 import requests
 
 from crocolaketools.downloader.downloader import Downloader
@@ -116,7 +115,7 @@ class DownloaderGLODAP(Downloader):
         RuntimeError
             If no reachable URL is found.
         """
-        local_path = os.path.join(self.input_path, self.fname)
+        local_path = self.input_path / self.fname
 
         if self._is_already_downloaded(local_path):
             print(
@@ -130,7 +129,7 @@ class DownloaderGLODAP(Downloader):
 
         if url == GLODAP_URL_GEOMAR:
             # GEOMAR serves a zip; download then extract via inherited method
-            zip_path = local_path + ".zip"
+            zip_path = local_path.with_name(local_path.name + ".zip")
             self._download_file(url, zip_path)
             self.unzip_file(zip_path)  # extracts and deletes the zip
         else:

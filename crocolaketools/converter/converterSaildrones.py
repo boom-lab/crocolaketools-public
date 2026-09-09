@@ -10,7 +10,7 @@
 ## @date Sat 18 Apr 2025
 
 ##########################################################################
-import os
+from pathlib import Path
 import warnings
 import dask
 import dask.dataframe as dd
@@ -281,8 +281,8 @@ class ConverterSaildrones(Converter):
         """
         
         if filenames is None:
-            guess_path = filepath or self.input_path
-            filenames = os.listdir(guess_path)
+            guess_path = Path(filepath or self.input_path)
+            filenames = [p.name for p in guess_path.iterdir()]
 
         if isinstance(filenames, str):
             filenames = [filenames]

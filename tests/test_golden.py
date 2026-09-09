@@ -28,9 +28,7 @@ Regenerate golden files (after an intentional change) with:
 
 """
 
-import glob
 import json
-import os
 import shutil
 from pathlib import Path
 
@@ -99,16 +97,16 @@ def test_golden(golden_target, dask_client, tmp_path, request):
     # and never touches tests/fixtures/parquet/. Converter reads both
     # attributes live at call time, so a post-construction override works.
     converter.outdir_pq = tmp_path / "parquet"
-    converter.tmp_path = str(tmp_path / "tmp") + "/"
+    converter.tmp_path = tmp_path / "tmp"
 
     if golden_target.chunk_profile is not None:
         # SprayGliders has no convert() override: the base class's generic
         # convert() reads straight from tmp_path, so the input files must be
         # chunked into tmp_path first (see golden_registry.GoldenTarget
         # docstring).
-        input_files = [f for f in os.listdir(converter.input_path) if f.endswith(".nc")]
+        input_files = [f.name for f in converter.input_path.glob("*.nc")]
         converter.prepare_data(flist=input_files, lock=Lock(), chunk_profile=golden_target.chunk_profile)
-        chunk_files = [os.path.basename(f) for f in glob.glob(os.path.join(converter.tmp_path, "*.nc"))]
+        chunk_files = sorted(f.name for f in converter.tmp_path.glob("*.nc"))
         converter.convert(filenames=chunk_files)
     else:
         converter.convert()

@@ -8,20 +8,16 @@
 ## @date Fri 04 Oct 2024
 
 ##########################################################################
-import os
-import yaml
 import warnings
 import dask
 import dask.dataframe as dd
 from dask.distributed import Lock
 import gsw
-import importlib.resources
 import numpy as np
 from pathlib import Path
 import pandas as pd
 import pyarrow as pa
 import pyarrow.parquet as pq
-import shutil
 import xarray as xr
 from crocolaketools import db_names,db_params
 from crocolaketools.config import config_paths as cfgp
@@ -68,7 +64,6 @@ class Converter:
             db = config['db']
             db_type = config['db_type'].upper()
 
-            base_path = cfgp.get_config_path()
             config_disk = cfgp.get_config_paths_db_dict(db + "_" + db_type)
 
             config_user_keys = list(config.keys())
@@ -95,7 +90,7 @@ class Converter:
             if config["tmp_path"] is None:
                 tmp_path = None
             else:
-                tmp_path = os.path.abspath(os.path.join(base_path, config["tmp_path"]))
+                tmp_path = cfgp.resolve_config_path(config["tmp_path"])
 
         else:
             raise ValueError("No config argument provided.")
@@ -122,21 +117,22 @@ class Converter:
 
         if input_path is None:
             raise ValueError("No input file path provided.")
-        if len(os.listdir(input_path))==0:
+        input_path = Path(input_path)
+        if not any(input_path.iterdir()):
             raise ValueError(f"Input folder {input_path} is empty. If you are using config.yaml, is the relative path correct?")
         self.input_path = input_path
         print("Original files read from " + str(self.input_path))
 
         if outdir_schema is None:
-            self.outdir_schema = Path("./schemas/")
+            self.outdir_schema = Path("./schemas")
         else:
-            self.outdir_schema = outdir_schema
+            self.outdir_schema = Path(outdir_schema)
         print("Schema(s) will be stored at " + str(self.outdir_schema))
 
         if outdir_pq is None:
-            self.outdir_pq = Path("./parquet/")
+            self.outdir_pq = Path("./parquet")
         else:
-            self.outdir_pq = outdir_pq
+            self.outdir_pq = Path(outdir_pq)
         print("Parquet database will be stored at " + str(self.outdir_pq))
 
         if fname_pq is None:
@@ -158,13 +154,11 @@ class Converter:
 
         # Generate temporary folder variable
         if tmp_path is None:
-            self.tmp_path = "./tmp/"
+            self.tmp_path = Path("./tmp")
         else:
-            if tmp_path[-1] != "/":
-                tmp_path = tmp_path + "/"
-            self.tmp_path = tmp_path
+            self.tmp_path = Path(tmp_path)
 
-        print("Temporary files will be stored at " + self.tmp_path)
+        print("Temporary files will be stored at " + str(self.tmp_path))
 
         self.overwrite = overwrite
 
@@ -229,7 +223,7 @@ class Converter:
             else:
                 guess_path = filepath
                 warnings.warn("Filename(s) not provided, guessing from provided file path: " + str(guess_path))
-            filenames = os.listdir(guess_path)
+            filenames = [p.name for p in Path(guess_path).iterdir()]
         print("List of files to convert: ", filenames)
 
         # adapt for single filename input
@@ -349,11 +343,11 @@ class Converter:
 
         print("Saving " + self.db + ", " + self.db_type + " version, to " + str(self.outdir_pq))
 
-        os.makedirs(self.outdir_pq, exist_ok=True)
+        self.outdir_pq.mkdir(parents=True, exist_ok=True)
 
         append = False
         overwrite = True
-        if len(os.listdir(self.outdir_pq))>0:
+        if any(self.outdir_pq.iterdir()):
             if self.overwrite:
                 print("Folder exists and contains files. All content is being removed before and new files created.")
             else:

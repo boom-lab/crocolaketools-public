@@ -11,13 +11,14 @@
 import argparse
 import importlib.resources
 import logging
-import os
 import subprocess
-import yaml
 from datetime import datetime
+from pathlib import Path
 
 from crocolakeloader.loader import Loader
 from dask.distributed import Client
+
+from crocolaketools.config import config_paths as cfgp
 ##########################################################################
 
 #------------------------------------------------------------------------------#
@@ -60,9 +61,7 @@ def merge_crocolake(db_type,croco_path,outdir,croco_name):
     croco_name  --  name of merged CrocoLake
     """
 
-    config_path = importlib.resources.files("crocolaketools.config").joinpath("config_cluster.yaml")
-    config_cluster = yaml.safe_load(open(config_path))
-    client = Client(**config_cluster["SPRAY_GLIDERS"])
+    client = Client(**cfgp.get_config_cluster_db_dict("SPRAY_GLIDERS"))
 
     logging.info("Client dashboard address: %s", client.dashboard_link)
     logging.info("Client scheduler address: %s", client.scheduler.address)
@@ -77,7 +76,7 @@ def merge_crocolake(db_type,croco_path,outdir,croco_name):
     ddf = ddf.repartition(partition_size="300MB")
 
     name_function = lambda x: f"{croco_name}_{x:04d}.parquet"
-    os.makedirs(outdir, exist_ok=True)
+    Path(outdir).mkdir(parents=True, exist_ok=True)
 
     print("writing parquet")
     ddf.to_parquet(
@@ -118,20 +117,12 @@ def main():
             variants = [args.d.upper()]
             subprocess.run(["bash", str(sh_script)] + variants)
 
-        config_file = importlib.resources.files("crocolaketools.config").joinpath("config.yaml")
-        config_path = importlib.resources.files("crocolaketools.config")
-        config = yaml.safe_load(open(config_file))
-        args.i = os.path.abspath(
-            os.path.join(
-                config_path, config["CROCOLAKE_"+args.d.upper()]["ln_path"]
-            )
-        )
-        args.o = os.path.abspath(
-            os.path.join(
-                config_path, config["CROCOLAKE_"+args.d.upper()]["outdir_pq"]
-            )
-        )
-        args.f = config["CROCOLAKE_"+args.d.upper()]["fname_pq"]
+        db_key = "CROCOLAKE_" + args.d.upper()
+        # resolve_config_path already returns an absolute, normalised path;
+        # ln_path is the `current` symlink dir, so it must not be dereferenced
+        args.i = cfgp.get_config_paths_field(db_key, "ln_path")
+        args.o = cfgp.get_config_paths_field(db_key, "outdir_pq")
+        args.f = cfgp.get_config_paths_db_dict(db_key)["fname_pq"]
 
     # Configure logging
     configure_logging(args.f+".log")

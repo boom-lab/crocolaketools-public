@@ -9,7 +9,6 @@
 ## @date Sat 21 Mar 2026
 
 ##########################################################################
-import os
 import requests
 
 from crocolaketools.downloader.downloader import Downloader
@@ -132,7 +131,7 @@ class DownloaderSprayGliders(Downloader):
         skipped = []
 
         for fname, remote_path in self.fnames.items():
-            local_path = os.path.join(self.input_path, fname)
+            local_path = self.input_path / fname
 
             if self._is_already_downloaded(local_path):
                 print(

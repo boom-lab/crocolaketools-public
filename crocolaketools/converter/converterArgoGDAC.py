@@ -12,7 +12,6 @@ import dask
 import dask.dataframe as dd
 from dask.distributed import Client
 import numpy as np
-import os
 import pandas as pd
 from pathlib import Path
 import pyarrow as pa
@@ -49,8 +48,8 @@ class ConverterArgoGDAC(Converter):
 
         self.db_types = db_types
 
-        self.outdir_parquet = outdir_parquet
-        self.schema_path = schema_path
+        self.outdir_parquet = None if outdir_parquet is None else Path(outdir_parquet)
+        self.schema_path = None if schema_path is None else Path(schema_path)
 
         self.chunk_size = 1000
 
@@ -106,9 +105,9 @@ class ConverterArgoGDAC(Converter):
 
             # convert metadata
             if len(metadata) > 0:
-                metadata_dir = os.path.join(outdir_parquet, "metadata/")
-                Path(metadata_dir).mkdir(parents = True, exist_ok = True)
-                parquet_filename = os.path.join(metadata_dir, "Argo" + db_name + "_metadata.parquet")
+                metadata_dir = Path(outdir_parquet) / "metadata"
+                metadata_dir.mkdir(parents = True, exist_ok = True)
+                parquet_filename = metadata_dir / ("Argo" + db_name + "_metadata.parquet")
                 metadata.to_parquet(parquet_filename)
                 print("Metadata stored to " + str(parquet_filename) + ".")
 

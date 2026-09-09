@@ -9,8 +9,6 @@
 
 ##########################################################################
 import argparse
-import importlib.resources
-import yaml
 from dask.distributed import Client
 
 
@@ -19,15 +17,14 @@ from warnings import simplefilter
 import pandas as pd
 # ignore pandas "educational" performance warnings
 simplefilter(action="ignore", category=pd.errors.PerformanceWarning)
+from crocolaketools.config import config_paths as cfgp
 from crocolaketools.converter.converterSPOTS import ConverterSPOTS
 ##########################################################################
 
 def spots2parquet(spots_path = None, spots_name = None, outdir_pqt_phy = None, outdir_pqt_bgc = None, fname_pq = None, use_config_file = None):
     """Convert SPOTS data to parquet format"""
 
-    config_path = importlib.resources.files("crocolaketools.config").joinpath("config_cluster.yaml")
-    config_cluster = yaml.safe_load(open(config_path))
-    client = Client(**config_cluster["SPOTS"])
+    client = Client(**cfgp.get_config_cluster_db_dict("SPOTS"))
     print("Dask client dashboard link:", client.dashboard_link)
 
     if not use_config_file:

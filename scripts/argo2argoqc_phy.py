@@ -9,14 +9,13 @@
 
 ##########################################################################
 from datetime import datetime
-import importlib.resources
-import yaml
 from warnings import simplefilter
 from dask.distributed import Client
 import pandas as pd
 import argparse
 # ignore pandas "educational" performance warnings
 simplefilter(action="ignore", category=pd.errors.PerformanceWarning)
+from crocolaketools.config import config_paths as cfgp
 from crocolaketools.converter.converterArgoQC import ConverterArgoQC
 ##########################################################################
 
@@ -24,9 +23,7 @@ def argo2argoqc_phy(argo_path,outdir_pqt,fname_pq,use_config_file):
     """Subset ARGO to QC-ed only data"""
 
     # Set up config dask cluster from config file
-    config_path = importlib.resources.files("crocolaketools.config").joinpath("config_cluster.yaml")
-    config_cluster = yaml.safe_load(open(config_path))
-    client = Client(**config_cluster["ARGO-QC_PHY"])
+    client = Client(**cfgp.get_config_cluster_db_dict("ARGO-QC_PHY"))
 
     if not use_config_file:
         if argo_path is None:

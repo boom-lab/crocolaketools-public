@@ -5,7 +5,6 @@
 This module provides common fixtures used across all test categories.
 """
 
-import os
 from pathlib import Path
 from typing import Dict, Any
 
@@ -83,7 +82,6 @@ def generated_parquet():
     the converter code under test. Generating it here makes both cases the
     same run.
     """
-    import glob as _glob
     import shutil
 
     from dask.distributed import Lock
@@ -124,12 +122,11 @@ def generated_parquet():
                 converter.convert()
             else:
                 # prepare_data refuses to run into an existing tmp_path
-                if os.path.exists(converter.tmp_path):
+                if converter.tmp_path.is_dir():
                     shutil.rmtree(converter.tmp_path)
-                input_files = [f for f in os.listdir(converter.input_path) if f.endswith(".nc")]
+                input_files = [f.name for f in converter.input_path.glob("*.nc")]
                 converter.prepare_data(flist=input_files, lock=Lock(), chunk_profile=target.chunk_profile)
-                chunk_files = [os.path.basename(f)
-                               for f in _glob.glob(os.path.join(converter.tmp_path, "*.nc"))]
+                chunk_files = sorted(f.name for f in converter.tmp_path.glob("*.nc"))
                 converter.convert(filenames=chunk_files)
     finally:
         client.close()

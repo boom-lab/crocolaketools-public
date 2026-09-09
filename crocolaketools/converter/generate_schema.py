@@ -41,10 +41,10 @@ class generateSchema():
         """
 
         if outdir is None:
-            self.outdir = './schemas/'
+            self.outdir = Path("./schemas")
         else:
-            self.outdir = outdir
-        print("Schema(s) will be stored at " + self.outdir)
+            self.outdir = Path(outdir)
+        print("Schema(s) will be stored at " + str(self.outdir))
 
         if isinstance(db,str):
             db = db.upper()
@@ -71,9 +71,9 @@ class generateSchema():
         if self.schema is None:
             raise ValueError("schema is None -- did you generate it?")
 
-        Path(self.outdir).mkdir(parents = True, exist_ok = True)
+        self.outdir.mkdir(parents = True, exist_ok = True)
 
-        self.schema_fname = self.outdir + self.schema_name
+        self.schema_fname = self.outdir / self.schema_name
 
         pq.write_metadata(
             self.schema,
@@ -81,14 +81,14 @@ class generateSchema():
         )
 
         # human-readable companion
-        self.schema_json_fname = self.schema_fname + ".json"
+        self.schema_json_fname = self.schema_fname.with_name(self.schema_name + ".json")
         columns = {field.name: str(field.type) for field in self.schema}
         with open(self.schema_json_fname, "w") as f:
             json.dump({"n_columns": len(columns), "columns": columns}, f, indent=2)
             f.write("\n")
 
-        print("Schema(s) stored at " + self.schema_fname)
-        print("Schema(s) companion stored at " + self.schema_json_fname)
+        print("Schema(s) stored at " + str(self.schema_fname))
+        print("Schema(s) companion stored at " + str(self.schema_json_fname))
 
 #------------------------------------------------------------------------------#
 ## Generate schema
@@ -125,4 +125,4 @@ class generateSchema():
 ##########################################################################
 
 if __name__ == "__main__":
-    test = generateSchema(outdir="./test/")
+    test = generateSchema(outdir="./test")

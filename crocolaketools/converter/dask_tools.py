@@ -16,6 +16,7 @@ import pandas as pd
 import xarray as xr
 
 import numpy as np
+from pathlib import Path
 # ignore pandas "educational" performance warnings
 import warnings
 warnings.simplefilter(action="ignore", category=pd.errors.PerformanceWarning)
@@ -46,7 +47,7 @@ class daskTools():
     # Constructors/Destructors                                           #
     # ------------------------------------------------------------------ #
 
-    def __init__(self, db_type=None, out_dir=None, flist=None, schema_path='../schemas', chunk=None):
+    def __init__(self, db_type=None, out_dir=None, flist=None, schema_path="../schemas", chunk=None):
         """Constructor
 
         Arguments:
@@ -70,9 +71,9 @@ class daskTools():
             self.flist = flist
 
         if out_dir is None:
-            self.out_dir = './ArgoParquet/'
+            self.out_dir = Path("./ArgoParquet")
         else:
-            self.out_dir = out_dir
+            self.out_dir = Path(out_dir)
 
         if chunk is None:
             self.chunk = 2000
@@ -80,9 +81,9 @@ class daskTools():
             self.chunk = chunk
 
         if schema_path is None:
-            self.schema_path = '../schemas/Argo' + self.db_type + '_schema.metadata'
+            self.schema_path = Path("../schemas") / ("Argo" + self.db_type + "_schema.metadata")
         else:
-            self.schema_path = schema_path
+            self.schema_path = Path(schema_path)
         self.schema = pq.read_schema(self.schema_path)
         self.__translate_pq_to_pd()
 

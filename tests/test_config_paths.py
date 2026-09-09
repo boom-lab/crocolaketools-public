@@ -52,10 +52,36 @@ class TestConfigPaths:
             cfgp.get_config_paths_db_dict("NOT_A_DB_PHY")
 
     def test_field_resolves_against_the_config_dir(self):
-        """get_config_paths_field() joins the relative value onto the config dir."""
+        """get_config_paths_field() joins the relative value onto the config dir.
+
+        The result is absolute and normalised: config.yaml's values are written
+        relative to the config dir ("../../tests/fixtures/..."), and the ".."
+        segments are collapsed so consumers can compare paths by equality.
+        """
         raw = cfgp.get_config_paths_db_dict(DB_KEY)["input_path"]
         resolved = cfgp.get_config_paths_field(DB_KEY, "input_path")
-        assert Path(str(resolved)) == Path(str(cfgp.get_config_path())) / raw
+        assert resolved == Path(os.path.abspath(cfgp.get_config_path() / raw))
+        assert resolved.is_absolute()
+        assert ".." not in resolved.parts
+
+    def test_absolute_field_is_left_alone(self):
+        """An absolute config value is not joined onto the config dir.
+
+        This is what lets a site config name paths outside the package.
+        """
+        assert cfgp.resolve_config_path("/srv/crocolake/phy") == Path("/srv/crocolake/phy")
+
+    def test_symlinks_are_not_resolved(self, tmp_path):
+        """Resolution normalises but does not follow symlinks.
+
+        Published datasets are addressed through a `current` symlink; resolving
+        it would record whichever snapshot it points at today.
+        """
+        real = tmp_path / "snapshots" / "2026-09-09"
+        real.mkdir(parents=True)
+        link = tmp_path / "current"
+        link.symlink_to(real)
+        assert cfgp.resolve_config_path(link) == link
 
     def test_cluster_file(self):
         """get_config_cluster_file() resolves to config_cluster.yaml."""
@@ -91,17 +117,17 @@ class TestDownloaderConfigResolution:
         with pytest.raises(KeyError):
             Downloader(config={"db": "NOT_A_DB", "db_type": "PHY"})
 
-    def test_input_path_is_absolute_and_slash_terminated(self, tmp_path):
-        """input_path is absolutised and given a trailing separator."""
-        target = tmp_path / "original"          # deliberately no trailing "/"
+    def test_input_path_is_an_absolute_path_object(self, tmp_path):
+        """input_path is a resolved, absolute Path -- never a string."""
+        target = tmp_path / "original"
         d = Downloader(config={
             "db": DB,
             "db_type": DB_TYPE,
             "input_path": str(target),
         })
-        assert os.path.isabs(d.input_path)
-        assert d.input_path.endswith("/")
-        assert Path(d.input_path) == target
+        assert isinstance(d.input_path, Path)
+        assert d.input_path.is_absolute()
+        assert d.input_path == target
 
     def test_input_path_directory_is_created(self, tmp_path):
         """The destination directory is created if absent."""

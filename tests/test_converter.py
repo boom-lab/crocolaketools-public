@@ -61,7 +61,7 @@ class TestConverter:
         """Test reading the unprefixed GLODAPv3 demo CSV."""
         converter = ConverterGLODAP(db_type="PHY")
         source = pd.read_csv(
-            os.path.join(converter.input_path, "demo_GLODAP.csv"),
+            converter.input_path / "demo_GLODAP.csv",
             nrows=100,
         ).convert_dtypes(dtype_backend="pyarrow")
         profiled = converter.add_profile_id(
@@ -90,7 +90,7 @@ class TestConverter:
         """Test that GLODAP QC flags retain only values flagged 0 or 2."""
         converter = ConverterGLODAP(db_type="BGC")
         source = pd.read_csv(
-            os.path.join(converter.input_path, "demo_GLODAP.csv"),
+            converter.input_path / "demo_GLODAP.csv",
             nrows=100,
         ).convert_dtypes(dtype_backend="pyarrow")
         df = converter.standardize_data(
@@ -696,7 +696,7 @@ class TestConverter:
             db_type="PHY",
         )
         converterPHY.outdir_pq = tmp_path / "parquet"
-        converterPHY.tmp_path = str(tmp_path / "tmp") + "/"
+        converterPHY.tmp_path = tmp_path / "tmp"
 
         pq_files = glob.glob(str(converterPHY.input_path / '*.parquet'))
         assert len(pq_files) > 0
@@ -716,7 +716,7 @@ class TestConverter:
             db_type="BGC",
         )
         converterBGC.outdir_pq = tmp_path / "parquet"
-        converterBGC.tmp_path = str(tmp_path / "tmp") + "/"
+        converterBGC.tmp_path = tmp_path / "tmp"
 
         pq_files = glob.glob(str(converterBGC.input_path / '*.parquet'))
         assert len(pq_files) > 0
