@@ -225,6 +225,27 @@ class TestConfigDirArgument:
         self._parse([])
         assert cfgp.get_config_path() == exported
 
+    def test_flag_is_stored_absolute(self, monkeypatch, tmp_path):
+        """A relative --config-dir must survive a child process's cwd.
+
+        The scripts shell out to parse_yaml_argo_gdac.sh and friends, which may
+        run from anywhere.
+        """
+        TestConfigDirEnvVar._write_config_dir(tmp_path / "site")
+        monkeypatch.delenv(cfgp.CONFIG_DIR_ENV_VAR, raising=False)
+        monkeypatch.chdir(tmp_path)
+        self._parse(["--config-dir", "site"])
+        stored = os.environ[cfgp.CONFIG_DIR_ENV_VAR]
+        assert Path(stored).is_absolute()
+        assert Path(stored) == tmp_path / "site"
+
+    def test_flag_expands_user_home(self, monkeypatch, tmp_path):
+        site = TestConfigDirEnvVar._write_config_dir(tmp_path / "home" / "cfg")
+        monkeypatch.setenv("HOME", str(tmp_path / "home"))
+        monkeypatch.delenv(cfgp.CONFIG_DIR_ENV_VAR, raising=False)
+        self._parse(["--config-dir", "~/cfg"])
+        assert cfgp.get_config_path() == site
+
     def test_flag_is_validated_like_the_variable(self, monkeypatch, tmp_path):
         monkeypatch.delenv(cfgp.CONFIG_DIR_ENV_VAR, raising=False)
         self._parse(["--config-dir", str(tmp_path / "nope")])

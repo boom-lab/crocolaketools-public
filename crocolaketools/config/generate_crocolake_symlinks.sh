@@ -9,7 +9,7 @@ set -o pipefail
 
 SCRIPT_DIR=$(dirname "$(readlink -f "$0")")
 echo "Script directory: $SCRIPT_DIR"
-. "${SCRIPT_DIR}/resolve_config_dir.sh"
+. "${SCRIPT_DIR}/resolve_config_dir.sh" || exit 1
 echo "Config directory: $CONFIG_DIR"
 yaml_file="${CONFIG_DIR}""/datasets.yaml"
 crocolake_variants=(

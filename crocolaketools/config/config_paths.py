@@ -123,11 +123,14 @@ def apply_config_dir_argument(args) -> None:
 
     Call before reading any configuration. The value goes into the environment
     so that the flag and the variable share a single resolution path, and so
-    that shell scripts invoked further down see the same directory.
+    that shell scripts invoked further down see the same directory. It is made
+    absolute first, because those may run from a different directory.
     """
     config_dir = getattr(args, "config_dir", None)
     if config_dir:
-        os.environ[CONFIG_DIR_ENV_VAR] = str(config_dir)
+        os.environ[CONFIG_DIR_ENV_VAR] = os.path.abspath(
+            os.path.expanduser(str(config_dir))
+        )
 
 def resolve_config_path(value: Union[str, Path]) -> Path:
     """Resolve a path read from a config file against the config directory.

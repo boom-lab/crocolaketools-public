@@ -5,7 +5,7 @@ set -e
 set -o pipefail
 
 SCRIPT_DIR=$(dirname "$(readlink -f "$0")")
-. "${SCRIPT_DIR}/../config/resolve_config_dir.sh"
+. "${SCRIPT_DIR}/../config/resolve_config_dir.sh" || exit 1
 yaml_file="${CONFIG_DIR}""/datasets.yaml"
 argo_variants=(
   "PHY"
