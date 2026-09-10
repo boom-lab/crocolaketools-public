@@ -66,8 +66,10 @@ for var in "${crocolake_variants[@]}"; do
     echo "Creating folder $crocolake_ln if it does not exist"
     mkdir -p $crocolake_ln
 
-    # Extract all `outdir_pq` entries from the YAML file
-    yq --arg var "$var" '.[] | select(has("outdir_pq") and .db_type == $var) | .outdir_pq' "$yaml_file" | while read -r outdir_pq; do
+    # Each database's output directory and the name to link it under. The link
+    # name is db_codename when the dataset declares one, so that renaming
+    # outdir_pq does not change what CrocoLakeLoader globs for.
+    yq -r --arg var "$var" '.[] | select(has("outdir_pq") and .db_type == $var) | [.outdir_pq, (.db_codename // "")] | @tsv' "$yaml_file" | while IFS=$'\t' read -r outdir_pq db_codename; do
       # Skip the CROCOLAKE outdir_pq itself
 
       # skip if it's the crocolake dir or the other db type (bgc/phy)
@@ -86,7 +88,11 @@ for var in "${crocolake_variants[@]}"; do
 
         # Create a symbolic link in the CROCOLAKE directory
         if [ -d "$outdir_pq" ]; then
-          db_name=$(basename "$outdir_pq")
+          if [ -n "$db_codename" ]; then
+            db_name="$db_codename"
+          else
+            db_name=$(basename "$outdir_pq")
+          fi
           echo "Creating symlink for $db_name in $crocolake_ln (points to: $outdir_pq)"
           ln -s "$outdir_pq" "$crocolake_ln/$db_name"
         else

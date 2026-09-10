@@ -122,6 +122,44 @@ class TestConfigPaths:
             assert value.startswith("/"), f"{db}.{field} is relative: {value}"
 
 
+class TestDatasetFields:
+    """Invariants the config files must hold for the shell layer to work."""
+
+    @staticmethod
+    def _linked_datasets():
+        """Datasets that generate_crocolake_symlinks.sh links into CrocoLake."""
+        import yaml as _yaml
+        cfg = _yaml.safe_load(cfgp.get_config_paths_file().read_text())
+        return {
+            k: v for k, v in cfg.items()
+            if isinstance(v, dict) and "outdir_pq" in v and not k.startswith("CROCOLAKE_")
+        }
+
+    def test_every_linked_dataset_declares_a_codename(self):
+        """db_codename names the symlink, so CrocoLakeLoader can find it."""
+        missing = [k for k, v in self._linked_datasets().items() if not v.get("db_codename")]
+        assert not missing, f"db_codename missing for {missing}"
+
+    def test_codenames_are_unique_per_db_type(self):
+        """Two datasets of one type cannot claim the same link name."""
+        from collections import Counter
+        for db_type in ("PHY", "BGC"):
+            names = [v["db_codename"] for v in self._linked_datasets().values()
+                     if v.get("db_type") == db_type]
+            clashes = [n for n, c in Counter(names).items() if c > 1]
+            assert not clashes, f"{db_type}: duplicate db_codename {clashes}"
+
+    def test_template_declares_the_same_dataset_keys(self):
+        """The template must not drift from the config the suite runs against."""
+        import yaml as _yaml
+        template = _yaml.safe_load(
+            (cfgp.get_packaged_config_path() / "datasets.example.yaml").read_text()
+        )
+        assert set(template) == set(
+            _yaml.safe_load(cfgp.get_config_paths_file().read_text())
+        )
+
+
 class TestConfigDirEnvVar:
     """CROCOLAKE_CONFIG_DIR resolution."""
 

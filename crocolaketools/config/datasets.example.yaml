@@ -29,6 +29,12 @@
 #   overwrite: True to overwrite any pre-existing parquet dataset in outdir_pq
 #   tmp_path: folder for temporary files (not required by all converters)
 #   ln_path: path to symbolic links to generate CrocoLake (required only when generating CrocoLake with CrocoLakeLoader)
+#   db_codename: name to link this database under in ln_path; CrocoLakeLoader
+#                matches on it, so outdir_pq can be renamed without breaking it
+#   chunk_size: files converted at a time (ARGO-GDAC)
+#   chunk_profile: profiles per netCDF chunk (SprayGliders)
+#   num_procs: download processes (ARGO-GDAC)
+#   num_threads: parallel download threads
 
 
 # CROCOLAKE
@@ -57,6 +63,7 @@ ARGO_PHY:
   add_derived_vars: True
   overwrite: True
   tmp_path:
+  db_codename: ARGO-QC_PHY
 
 ARGO_BGC:
   db: ARGO
@@ -68,6 +75,7 @@ ARGO_BGC:
   add_derived_vars: True
   overwrite: True
   tmp_path:
+  db_codename: ARGO-QC_BGC
 
 # Argo GDAC
 ARGO-GDAC_PHY:
@@ -77,6 +85,7 @@ ARGO-GDAC_PHY:
   outdir_pq: /path/to/crocolake/parquet/ARGO-GDAC_PHY/
   chunk_size: 1000
   num_procs: 36
+  db_codename: ARGO-GDAC_PHY
 
 ARGO-GDAC_BGC:
   db: ARGO-GDAC
@@ -85,6 +94,7 @@ ARGO-GDAC_BGC:
   outdir_pq: /path/to/crocolake/parquet/ARGO-GDAC_BGC/
   chunk_size: 1000
   num_procs: 36
+  db_codename: ARGO-GDAC_BGC
 
 # GLODAP config
 GLODAP_PHY:
@@ -97,6 +107,7 @@ GLODAP_PHY:
   add_derived_vars: True
   overwrite: True
   tmp_path:
+  db_codename: GLODAP_PHY
 
 GLODAP_BGC:
   db: GLODAP
@@ -108,6 +119,7 @@ GLODAP_BGC:
   add_derived_vars: True
   overwrite: True
   tmp_path:
+  db_codename: GLODAP_BGC
 
 # IOOS Glider DAC (delayed-mode)
 IOOS_GLIDERS_PHY:
@@ -163,6 +175,7 @@ SprayGliders_PHY:
   overwrite: True
   tmp_path: /path/to/crocolake/original/tmp_SPRAY_PHY/
   chunk_profile: 5000
+  db_codename: SPRAY_PHY
 
 SprayGliders_BGC:
   db: SprayGliders
@@ -175,6 +188,7 @@ SprayGliders_BGC:
   overwrite: True
   tmp_path: /path/to/crocolake/original/tmp_SPRAY_BGC/
   chunk_profile: 5000
+  db_codename: SPRAY_BGC
 
 # SPOTS
 SPOTS_PHY:
@@ -187,6 +201,7 @@ SPOTS_PHY:
   add_derived_vars: True
   overwrite: True
   tmp_path:
+  db_codename: SPOTS_PHY
 
 SPOTS_BGC:
   db: SPOTS
@@ -198,6 +213,7 @@ SPOTS_BGC:
   add_derived_vars: True
   overwrite: True
   tmp_path:
+  db_codename: SPOTS_BGC
 
 # Saildrones
 Saildrones_PHY:
@@ -210,6 +226,7 @@ Saildrones_PHY:
   add_derived_vars: True
   overwrite: True
   tmp_path:
+  db_codename: SAILDRONES_PHY
 
 Saildrones_BGC:
   db: Saildrones
@@ -221,6 +238,7 @@ Saildrones_BGC:
   add_derived_vars: True
   overwrite: True
   tmp_path:
+  db_codename: SAILDRONES_BGC
 
 # OleanderXBT
 OleanderXBT_PHY:
@@ -233,6 +251,7 @@ OleanderXBT_PHY:
   add_derived_vars: False
   overwrite: True
   tmp_path:
+  db_codename: OLEANDER_PHY
 
 # Default relative path for demo data download
 demo:
