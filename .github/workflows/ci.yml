@@ -5,6 +5,9 @@ name: CI
 
 on:
   push:
+    # branches only: a tag push is release.yml's job
+    branches:
+      - '**'
   pull_request:
     branches:
       - develop
