@@ -15,7 +15,7 @@ argo_variants=(
 # Loop through each variant of target CrocoLake directories
 for var in "${argo_variants[@]}"; do
 
-    IN_PATH=$(yq ".\"ARGO-GDAC_${var}\".input_path" "$yaml_file")
+    IN_PATH=$("$YQ" ".\"ARGO-GDAC_${var}\".input_path" "$yaml_file")
     IN_PATH=$(echo "$IN_PATH" | sed 's/^"//;s/"$//')
     CONFIG_DIR=$(realpath "${CONFIG_DIR}") # get absolute path to config directory
     IN_PATH="${CONFIG_DIR}/${IN_PATH}"
@@ -25,7 +25,7 @@ for var in "${argo_variants[@]}"; do
     fi
     IN_PATH=$(realpath "${IN_PATH}")
 
-    OUT_PATH=$(yq ".\"ARGO-GDAC_${var}\".outdir_pq" "$yaml_file")
+    OUT_PATH=$("$YQ" ".\"ARGO-GDAC_${var}\".outdir_pq" "$yaml_file")
     OUT_PATH=$(echo "$OUT_PATH" | sed 's/^"//;s/"$//')
     OUT_PATH="${CONFIG_DIR}/${OUT_PATH}"
 

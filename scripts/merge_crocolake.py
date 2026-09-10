@@ -119,7 +119,8 @@ def main():
         ) as sh_script:
             print("Executing script to generate symlinks for CrocoLake data...")
             variants = [args.d.upper()]
-            subprocess.run(["bash", str(sh_script)] + variants)
+            # the merge must not run if the symlinks were not rebuilt
+            subprocess.run(["bash", str(sh_script)] + variants, check=True)
 
         db_key = "CROCOLAKE_" + args.d.upper()
         # resolve_config_path already returns an absolute, normalised path;

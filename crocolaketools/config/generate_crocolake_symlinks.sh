@@ -31,7 +31,7 @@ fi
 for var in "${crocolake_variants[@]}"; do
 
     # Extract the `ln_path` for the CROCOLAKE group
-    crocolake_ln=$(yq ".CROCOLAKE_"$var".ln_path" "$yaml_file")
+    crocolake_ln=$("$YQ" ".CROCOLAKE_"$var".ln_path" "$yaml_file")
     echo "ln_path for CROCOLAKE_$var: $crocolake_ln"
     # Check if CROCOLAKE ln_path exists
     if [ -z "$crocolake_ln" ]; then
@@ -51,10 +51,8 @@ for var in "${crocolake_variants[@]}"; do
     fi
     echo "ln_path for CROCOLAKE_$var: $crocolake_ln"
 
-    echo "Removing all existing symbolic links in $crocolake_ln"
-    find $crocolake_ln -type l -exec rm {} \;
 
-    crocolake_out=$(yq ".CROCOLAKE_"$var".outdir_pq" "$yaml_file")
+    crocolake_out=$("$YQ" ".CROCOLAKE_"$var".outdir_pq" "$yaml_file")
     crocolake_out=$(echo "$crocolake_out" | sed 's/^"//;s/"$//')
     if [[ "${crocolake_out}" != /* ]]; then
         crocolake_out=$(realpath -m -s "${CONFIG_DIR}/${crocolake_out}")
@@ -68,8 +66,20 @@ for var in "${crocolake_variants[@]}"; do
 
     # Each database's output directory and the name to link it under. The link
     # name is db_codename when the dataset declares one, so that renaming
-    # outdir_pq does not change what CrocoLakeLoader globs for.
-    yq -r --arg var "$var" '.[] | select(has("outdir_pq") and .db_type == $var) | [.outdir_pq, (.db_codename // "")] | @tsv' "$yaml_file" | while IFS=$'\t' read -r outdir_pq db_codename; do
+    # outdir_pq does not change what CrocoLakeLoader globs for. Read before
+    # removing anything, so a failure here leaves the existing links in place.
+    db_rows=$("$YQ" -r --arg var "$var" '.[] | select(has("outdir_pq") and .db_type == $var) | [.outdir_pq, (.db_codename // "")] | @tsv' "$yaml_file")
+    if [ -z "$db_rows" ]; then
+        echo "No datasets with db_type ${var} found in ${yaml_file}. Refusing to" >&2
+        echo "remove the existing symlinks, since there would be nothing to replace" >&2
+        echo "them with." >&2
+        exit 1
+    fi
+
+    echo "Removing all existing symbolic links in $crocolake_ln"
+    find "$crocolake_ln" -type l -exec rm {} \;
+
+    while IFS=$'\t' read -r outdir_pq db_codename; do
       # Skip the CROCOLAKE outdir_pq itself
 
       # skip if it's the crocolake dir or the other db type (bgc/phy)
@@ -99,5 +109,5 @@ for var in "${crocolake_variants[@]}"; do
           echo "Destination directory $outdir_pq does not exist. Skipping symlink creation. This usually happens if you have not generated this parquet dataset first."
         fi
       fi
-    done
+    done <<< "$db_rows"
 done

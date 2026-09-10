@@ -44,3 +44,34 @@ fi
 # pointing at `current` rather than at today's snapshot.
 CONFIG_DIR=$(realpath -m -s "$CONFIG_DIR")
 unset _crocolake_required
+
+# The queries in these scripts are jq syntax, which the jq-wrapper yq accepts
+# and the unrelated Go program of the same name does not. Candidates are tried
+# in order and the first one that accepts jq syntax wins, so a Go yq earlier on
+# PATH cannot hide a usable one.
+_yq_candidates=()
+if [ -n "${CONDA_PREFIX:-}" ]; then
+    _yq_candidates+=("${CONDA_PREFIX}/bin/yq")
+fi
+if [ -n "${VIRTUAL_ENV:-}" ]; then
+    _yq_candidates+=("${VIRTUAL_ENV}/bin/yq")
+fi
+while IFS= read -r _yq_path; do
+    _yq_candidates+=("$_yq_path")
+done < <(type -aP yq 2>/dev/null || true)
+
+YQ=""
+for _yq_path in ${_yq_candidates+"${_yq_candidates[@]}"}; do
+    if [ -x "$_yq_path" ] && printf 'a: 1\n' | "$_yq_path" --arg v x '.a' >/dev/null 2>&1; then
+        YQ="$_yq_path"
+        break
+    fi
+done
+unset _yq_candidates _yq_path
+
+if [ -z "$YQ" ]; then
+    echo "No usable yq found. These scripts need the jq wrapper (pip install yq);" >&2
+    echo "the Go implementation of the same name does not accept jq syntax." >&2
+    return 1
+fi
+export YQ
