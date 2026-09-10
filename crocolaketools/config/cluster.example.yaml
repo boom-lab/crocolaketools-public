@@ -1,3 +1,5 @@
+# TEMPLATE -- see datasets.example.yaml for how to use it.
+#
 # This config file contains the fields for the config_hpc dictionary used by the
 # scripts in the script folder.
 # Field names must be arguments to dask's LocalCluster Client

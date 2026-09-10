@@ -72,7 +72,7 @@ class DownloaderURLList(Downloader):
         overwrite   : if True, re-download files even if already present.
         dryrun      : if True, log what would be downloaded without fetching.
         config      : optional config dict with at least {'db', 'db_type'}.
-                      Defaults to OleanderXBT PHY from config.yaml.
+                      Defaults to OleanderXBT PHY from datasets.yaml.
         base_dir    : optional destination directory. If None, uses the
                       input_path resolved by the base Downloader.
         """

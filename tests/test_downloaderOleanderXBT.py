@@ -208,7 +208,7 @@ class TestDownload:
 @pytest.fixture
 def mock_base_downloader():
     """Patch Downloader.__init__ and configure_logging so tests don't need
-    config.yaml or write log files to disk."""
+    datasets.yaml or write log files to disk."""
     with patch(
         "crocolaketools.downloader.downloaderOleanderXBT.Downloader.__init__",
         return_value=None,

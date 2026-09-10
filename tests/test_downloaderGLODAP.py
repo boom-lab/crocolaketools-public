@@ -24,7 +24,7 @@ from crocolaketools.downloader.downloaderGLODAP import (
 )
 ##########################################################################
 
-# Minimal config used across tests -- base class reads the rest from config.yaml
+# Minimal config used across tests -- base class reads the rest from datasets.yaml
 DUMMY_CONFIG = {'db': 'GLODAP', 'db_type': 'PHY'}
 
 
@@ -272,7 +272,7 @@ class TestGLODAPDownload:
 
 @pytest.fixture
 def mock_base_downloader():
-    """Patch Downloader.__init__ so tests don't need config.yaml or
+    """Patch Downloader.__init__ so tests don't need datasets.yaml or
     crocolakeloader.params to be installed."""
     with patch(
         "crocolaketools.downloader.downloaderGLODAP.Downloader.__init__",

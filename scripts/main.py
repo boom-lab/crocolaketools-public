@@ -9,6 +9,7 @@
 
 ##########################################################################
 import sys
+from crocolaketools.config import config_paths as cfgp
 import argparse
 import importlib.metadata
 ##########################################################################
@@ -22,7 +23,11 @@ def main():
     parser = argparse.ArgumentParser(description='Package to create parquet copy of Argo databases.')
     parser.add_argument('--version', action='store_true', help="Show version and exit")
 
+
+    cfgp.add_config_dir_argument(parser)
     args = parser.parse_args()
+
+    cfgp.apply_config_dir_argument(args)
 
     if args.version:
         try:

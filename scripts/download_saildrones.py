@@ -11,6 +11,7 @@
 import argparse
 from datetime import datetime
 
+from crocolaketools.config import config_paths as cfgp
 from crocolaketools.downloader.downloaderSaildrones import DownloaderSaildrones
 ##########################################################################
 
@@ -50,13 +51,17 @@ def main():
         "--config",
         action="store_true",
         default=False,
-        help="Use config.yaml defaults for input_path instead of CLI arguments",
+        help="Use datasets.yaml defaults for input_path instead of CLI arguments",
     )
 
+
+    cfgp.add_config_dir_argument(parser)
     args = parser.parse_args()
 
+    cfgp.apply_config_dir_argument(args)
+
     # when --config is passed, let DownloaderSaildrones read input_path from
-    # config.yaml; otherwise use the default {'db': 'Saildrones', 'db_type': 'PHY'}
+    # datasets.yaml; otherwise use the default {'db': 'Saildrones', 'db_type': 'PHY'}
     config = None if args.config else {'db': 'Saildrones', 'db_type': 'PHY'}
 
     download_saildrones(

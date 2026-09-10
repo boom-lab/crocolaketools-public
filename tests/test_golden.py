@@ -92,7 +92,7 @@ def _schema_summary(schema) -> dict:
 def test_golden(golden_target, dask_client, tmp_path, request):
     converter = golden_target.converter_cls(db_type=golden_target.db_type)
 
-    # input_path/outdir_schema stay config.yaml-driven (real fixture data);
+    # input_path/outdir_schema stay datasets.yaml-driven (real fixture data);
     # outdir_pq/tmp_path are always overridden here so each run is hermetic
     # and never touches tests/fixtures/parquet/. Converter reads both
     # attributes live at call time, so a post-construction override works.

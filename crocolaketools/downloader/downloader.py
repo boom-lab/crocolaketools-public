@@ -45,7 +45,7 @@ class Downloader:
  
         config -- configuration dictionary. Must contain at least 'db' and
                   'db_type'. If any value is not specified, defaults in
-                  config.yaml are used; user-provided values override them.
+                  datasets.yaml are used; user-provided values override them.
  
         Relevant fields used by Downloader implementations:
         db            -- database name (e.g., 'OleanderXBT')

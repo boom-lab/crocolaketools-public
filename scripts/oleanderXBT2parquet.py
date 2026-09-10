@@ -44,7 +44,7 @@ def oleanderXBT2parquet(oleanderXBT_path=None, outdir_pqt=None, fname_pq=None, u
         ConverterPHY = ConverterOleanderXBT(config)
 
     else: # reads from file
-        print("Using configuration from config.yaml")
+        print("Using configuration from datasets.yaml")
         ConverterPHY = ConverterOleanderXBT(db_type='phy')
     print("Converting PHY files to parquet...")
     ConverterPHY.convert()
@@ -64,7 +64,11 @@ def main():
     parser.add_argument("-f", help="Basename for output files", required=False, default="demo_OLEANDERXBT.parquet")
     parser.add_argument('--config', action='store_true', help="Use config files instead of parsing arguments", required=False, default=None)
 
+
+    cfgp.add_config_dir_argument(parser)
     args = parser.parse_args()
+
+    cfgp.apply_config_dir_argument(args)
 
     oleanderXBT2parquet(args.i, args.o, args.f, args.config)
 

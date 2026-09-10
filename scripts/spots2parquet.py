@@ -42,7 +42,7 @@ def spots2parquet(spots_path = None, spots_name = None, outdir_pqt_phy = None, o
         ConverterPHY = ConverterSPOTS(config)
         
     else: # reads from file
-        print("Using configuration from config.yaml")
+        print("Using configuration from datasets.yaml")
         ConverterPHY = ConverterSPOTS(db_type = 'phy')
 
     ConverterPHY.convert()
@@ -63,7 +63,7 @@ def spots2parquet(spots_path = None, spots_name = None, outdir_pqt_phy = None, o
         ConverterBGC = ConverterSPOTS(config)
 
     else: # reads from file
-        print("Using configuration from config.yaml")
+        print("Using configuration from datasets.yaml")
         ConverterBGC = ConverterSPOTS(db_type = 'bgc')
 
     ConverterBGC.convert()
@@ -81,7 +81,11 @@ def main():
     parser.add_argument('-b', help = "Basename for output files", required = False, default = None)
     parser.add_argument('--config', action = 'store_true', help = "Use config files instead of parsing arguments", required = False, default = None)
 
+
+    cfgp.add_config_dir_argument(parser)
     args = parser.parse_args()
+
+    cfgp.apply_config_dir_argument(args)
 
     if args.b is None and args.n == "spots.csv":
         basename = args.n[:-4]

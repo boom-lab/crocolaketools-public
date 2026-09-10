@@ -356,7 +356,7 @@ class TestGatedParallelDownload:
 
 
 class TestConstraints:
-    """Tests for config.yaml constraint support in DownloaderERDDAP."""
+    """Tests for datasets.yaml constraint support in DownloaderERDDAP."""
 
     def test_no_constraints_by_default(self, mock_base_downloader):
         """time_start, time_end, extra_constraints are all None/empty by default."""
@@ -470,7 +470,7 @@ class TestConstraints:
 @pytest.fixture
 def mock_base_downloader():
     """Patch Downloader.__init__ and configure_logging so tests don't
-    need config.yaml or write a log file."""
+    need datasets.yaml or write a log file."""
     with patch(
         "crocolaketools.downloader.downloaderERDDAP.Downloader.__init__",
         return_value=None,

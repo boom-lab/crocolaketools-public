@@ -41,18 +41,61 @@ pip install . -c constraints.txt
 ```
 
 ### Converting datasets and building CrocoLake
-To test that the code executes succesfully and to have an idea of how the converters work, first download the demo data:
+To test that the code executes succesfully and to have an idea of how the converters work, use the small dataset committed to this repository under `tests/fixtures/`, together with the ready-made configuration in `tests/config/` that points at it -- see "Configuration is required" below.
+
+A larger demo dataset can also be downloaded:
 ```
 download_demo_data
 ```
-
-This will set up the folder `./crocolaketools/demo/` and store the demo data in there by converter (e.g. `./crocolaketools/demo/demo_GLODAP/`, `./crocolaketools/demo/demo_ARGO_GDAC/`).
+which fetches into `./crocolake_demo_data/` (override with `-d`). You will need to point a config at wherever you put it.
 
 Generally, you can run a converter with a command that looks like
 ```
 <converter_script> --config
 ```
-Where `<converter_script>` depends on the converter (e.g. `glodap2parquet`, `argo2argoqc_phy`) amd the `--config` flag tells the script to read the paths and flags from the config file `./crocolaketools/config/config.yaml`. The file is set up to run with the demo data and you can adjust it as you prefer.
+Where `<converter_script>` depends on the converter (e.g. `glodap2parquet`, `argo2argoqc_phy`) and the `--config` flag tells the script to read the paths and flags from the `datasets.yaml` in the directory named by `CROCOLAKE_CONFIG_DIR`.
+
+##### Configuration is required
+
+`crocolaketools` reads its paths from a configuration directory holding
+`datasets.yaml` (per-database paths and flags) and `cluster.yaml` (dask
+settings). There is no default: the package ships `datasets.example.yaml` and
+`cluster.example.yaml` as templates, not loadable configuration, so a run
+either names the directory it wants or stops with an error.
+
+Name it with `--config-dir`:
+
+```
+glodap2parquet --config --config-dir tests/config
+```
+
+or with the `CROCOLAKE_CONFIG_DIR` environment variable, which every entry
+point reads and which the SLURM layer uses:
+
+```
+export CROCOLAKE_CONFIG_DIR=$PWD/tests/config
+glodap2parquet --config
+```
+
+`--config-dir` wins when both are given. Either way, `tests/config` above is a
+ready-made configuration pointing at the test fixtures committed to this
+repository, so those two commands run the converters without any setup.
+
+To configure your own data, copy the templates and replace the `/path/to/...`
+placeholders:
+
+```
+mkdir -p ~/my-crocolake-config
+cp crocolaketools/config/datasets.example.yaml ~/my-crocolake-config/datasets.yaml
+cp crocolaketools/config/cluster.example.yaml  ~/my-crocolake-config/cluster.yaml
+$EDITOR ~/my-crocolake-config/datasets.yaml
+glodap2parquet --config --config-dir ~/my-crocolake-config
+```
+
+The directory must contain both files; supplying one of them is rejected, so
+paths and cluster sizing always come from the same place. Relative paths inside
+`datasets.yaml` resolve against that directory, absolute paths are used as
+written, and symlinks are left alone.
 
 Some scripts are provided in the `scripts` folder to illustrate how one can generate their own version The steps below illustrate how to run each converter.
 
@@ -98,7 +141,7 @@ Once you have two or more dataset in the parquet version, you can build CrocoLak
 ```
 merge_crocolake -d <var> --config
 ```
-where you replace `<var>` with `PHY` for the physical version, and with `BGC` for the biogeochemical version. The `config.yaml` identifies all the paths where the script will look for the parquet datasets. The script merges them into a unified dataset.
+where you replace `<var>` with `PHY` for the physical version, and with `BGC` for the biogeochemical version. The `datasets.yaml` identifies all the paths where the script will look for the parquet datasets. The script merges them into a unified dataset.
 
 ### `converter`
 

@@ -46,7 +46,7 @@ def spray2parquet(spray_path=None, outdir_pqt=None, fname_pq=None, use_config_fi
         ConverterPHY = ConverterSprayGliders(config)
 
     else: # reads from file
-        print("Using configuration from config.yaml")
+        print("Using configuration from datasets.yaml")
         ConverterPHY = ConverterSprayGliders(db_type='phy')
 
     print("Creating temporary files...")
@@ -95,7 +95,7 @@ def spray2parquet(spray_path=None, outdir_pqt=None, fname_pq=None, use_config_fi
         ConverterBGC = ConverterSprayGliders(config)
 
     else: # reads from file
-        print("Using configuration from config.yaml")
+        print("Using configuration from datasets.yaml")
         ConverterBGC = ConverterSprayGliders(db_type='bgc')
 
 
@@ -130,7 +130,11 @@ def main():
     parser.add_argument("-f", help="Basename for output files", required=False, default="1200_PHY_SPRAY-DEV.parquet")
     parser.add_argument('--config', action='store_true', help="Use config files instead of parsing arguments", required=False, default=None)
 
+
+    cfgp.add_config_dir_argument(parser)
     args = parser.parse_args()
+
+    cfgp.apply_config_dir_argument(args)
 
     spray2parquet(args.i,args.o,args.f,args.config)
 

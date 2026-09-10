@@ -9,12 +9,9 @@
 
 ##########################################################################
 import argparse
-import importlib.resources
-import os
 from pathlib import Path
 import requests
 from tqdm import tqdm
-import yaml
 import zipfile
 ##########################################################################
 #------------------------------------------------------------------------------#
@@ -57,23 +54,16 @@ def unzip_file(zip_filepath, extract_to):
 #------------------------------------------------------------------------------#
 def main():
     parser = argparse.ArgumentParser(description='Script to download demo datasets for CrocoLakeTools.')
-    parser.add_argument('-d', type=str, help="Destination folder to download data to (default: ./crocolaketools/demo/)", required=False, default=None)
+    parser.add_argument('-d', type=str, help="Destination folder to download data to (default: ./crocolake_demo_data/)", required=False, default=None)
 
     args = parser.parse_args()
 
-    if args.d is None:
-        config_path = importlib.resources.files("crocolaketools.config").joinpath("config.yaml")
-        config = yaml.safe_load(open(config_path))
-        destination = config["demo"]["download_path"]
-    else:
-        destination = args.d
-
-    destination = Path(destination)
+    destination = Path(args.d) if args.d is not None else Path("./crocolake_demo_data")
     destination.mkdir(parents = True, exist_ok = True)
 
     # Download the dataset
     print(f"Downloading test datasets...")
-    local_zip_filename = os.path.join(destination,"crocolaketools_demo_data.zip")
+    local_zip_filename = destination / "crocolaketools_demo_data.zip"
     download_file(
         "https://zenodo.org/records/16101615/files/crocolaketools_demo_data.zip?download=1",
         local_zip_filename
@@ -88,7 +78,7 @@ def main():
 
     # Clean up
     print("Cleaning up...")
-    os.remove(local_zip_filename)
+    local_zip_filename.unlink()
 
     print("Database setup complete.")
 

@@ -45,8 +45,8 @@ class Converter:
 
         config -- configuration dictionary, it must contains at least db and
                   db_type; other values as below; if any value is not specified,
-                  defaults in config.yaml are used; vice versa, if a values is
-                  specified, the corresponging entry in config.yaml is
+                  defaults in datasets.yaml are used; vice versa, if a values is
+                  specified, the corresponging entry in datasets.yaml is
                   overwritten with the user-specified value
 
         db            -- database name to generate schema for
@@ -119,7 +119,7 @@ class Converter:
             raise ValueError("No input file path provided.")
         input_path = Path(input_path)
         if not any(input_path.iterdir()):
-            raise ValueError(f"Input folder {input_path} is empty. If you are using config.yaml, is the relative path correct?")
+            raise ValueError(f"Input folder {input_path} is empty. If you are using datasets.yaml, is the relative path correct?")
         self.input_path = input_path
         print("Original files read from " + str(self.input_path))
 

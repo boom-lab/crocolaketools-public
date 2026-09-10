@@ -4,8 +4,9 @@
 set -e
 set -o pipefail
 
-CONFIG_DIR="../crocolaketools/config"
-yaml_file="${CONFIG_DIR}""/config.yaml"
+SCRIPT_DIR=$(dirname "$(readlink -f "$0")")
+. "${SCRIPT_DIR}/../crocolaketools/config/resolve_config_dir.sh"
+yaml_file="${CONFIG_DIR}""/datasets.yaml"
 argo_variants=(
   "PHY"
   "BGC"

@@ -9,7 +9,9 @@ set -o pipefail
 
 SCRIPT_DIR=$(dirname "$(readlink -f "$0")")
 echo "Script directory: $SCRIPT_DIR"
-yaml_file="${SCRIPT_DIR}""/config.yaml"
+. "${SCRIPT_DIR}/resolve_config_dir.sh"
+echo "Config directory: $CONFIG_DIR"
+yaml_file="${CONFIG_DIR}""/datasets.yaml"
 crocolake_variants=(
   "PHY"
   "BGC"
@@ -37,15 +39,15 @@ for var in "${crocolake_variants[@]}"; do
       exit 1
     fi
     crocolake_ln=$(echo "$crocolake_ln" | sed 's/^"//;s/"$//')
-    crocolake_path_ln="${SCRIPT_DIR}/${crocolake_ln}"
+    crocolake_path_ln="${CONFIG_DIR}/${crocolake_ln}"
     if [ ! -d "$crocolake_path_ln" ]; then
       echo "Directory $crocolake_path_ln does not exist. Creating it..."
       mkdir -p $crocolake_path_ln
     fi
     if [[ "${crocolake_ln}" != /* ]]; then
-        crocolake_ln=$(realpath "${SCRIPT_DIR}/${crocolake_ln}")
+        crocolake_ln=$(realpath -m -s "${CONFIG_DIR}/${crocolake_ln}")
     else
-        crocolake_ln=$(realpath "${crocolake_ln}")
+        crocolake_ln=$(realpath -m -s "${crocolake_ln}")
     fi
     echo "ln_path for CROCOLAKE_$var: $crocolake_ln"
 
@@ -55,9 +57,9 @@ for var in "${crocolake_variants[@]}"; do
     crocolake_out=$(yq ".CROCOLAKE_"$var".outdir_pq" "$yaml_file")
     crocolake_out=$(echo "$crocolake_out" | sed 's/^"//;s/"$//')
     if [[ "${crocolake_out}" != /* ]]; then
-        crocolake_out=$(realpath "${SCRIPT_DIR}/${crocolake_out}")
+        crocolake_out=$(realpath -m -s "${CONFIG_DIR}/${crocolake_out}")
     else
-        crocolake_out=$(realpath "${crocolake_out}")
+        crocolake_out=$(realpath -m -s "${crocolake_out}")
     fi
     echo "crocolake_out for CROCOLAKE_$var: $crocolake_out"
 
@@ -73,9 +75,9 @@ for var in "${crocolake_variants[@]}"; do
         echo "Processing outdir_pq: $outdir_pq"
         outdir_pq=$(echo "$outdir_pq" | sed 's/^"//;s/"$//')
         if [[ "${outdir_pq}" != /* ]]; then
-          outdir_pq=$(realpath "${SCRIPT_DIR}/${outdir_pq}")
+          outdir_pq=$(realpath -m -s "${CONFIG_DIR}/${outdir_pq}")
         else
-          outdir_pq=$(realpath "${outdir_pq}")
+          outdir_pq=$(realpath -m -s "${outdir_pq}")
         fi
 
         if [ "${outdir_pq: -1}" != "/" ]; then

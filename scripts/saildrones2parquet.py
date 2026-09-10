@@ -45,7 +45,7 @@ def saildrones2parquet(saildrones_path=None, outdir_pqt=None, fname_pq=None, use
         ConverterPHY = ConverterSaildrones(config)
 
     else: # reads from file
-        print("Using configuration from config.yaml")
+        print("Using configuration from datasets.yaml")
         ConverterPHY = ConverterSaildrones(db_type='phy')
     print("Converting PHY files to parquet...")
     ConverterPHY.convert()
@@ -75,7 +75,7 @@ def saildrones2parquet(saildrones_path=None, outdir_pqt=None, fname_pq=None, use
         ConverterBGC = ConverterSaildrones(config)
 
     else: # reads from file
-        print("Using configuration from config.yaml")
+        print("Using configuration from datasets.yaml")
         ConverterBGC = ConverterSaildrones(db_type='bgc')
 
     print("Converting BGC files to parquet...")
@@ -96,7 +96,11 @@ def main():
     parser.add_argument("-f", help="Basename for output files", required=False, default="demo_SAILDRONES.parquet")
     parser.add_argument('--config', action='store_true', help="Use config files instead of parsing arguments", required=False, default=None)
 
+
+    cfgp.add_config_dir_argument(parser)
     args = parser.parse_args()
+
+    cfgp.apply_config_dir_argument(args)
 
     saildrones2parquet(args.i, args.o, args.f, args.config)
 

@@ -15,9 +15,9 @@ import pytest
 import crocolaketools.config.config_paths as cfgp
 from crocolaketools.downloader.downloader import Downloader
 
-TEST_CONFIG_CLUSTER_FILE = Path(__file__).parent / "config_cluster_tests.yaml"
+TEST_CONFIG_CLUSTER_FILE = Path(__file__).parent / "config" / "cluster.yaml"
 
-# a db/db_type pair that exists in the packaged config.yaml
+# a db/db_type pair that exists in the packaged datasets.yaml
 DB = "GLODAP"
 DB_TYPE = "PHY"
 DB_KEY = f"{DB}_{DB_TYPE}"
@@ -31,12 +31,12 @@ class TestConfigPaths:
         """get_config_path() points at the installed config package."""
         base = Path(str(cfgp.get_config_path()))
         assert base.is_dir()
-        assert (base / "config.yaml").is_file()
+        assert (base / "datasets.yaml").is_file()
 
     def test_config_paths_file(self):
-        """get_config_paths_file() resolves to config.yaml inside it."""
+        """get_config_paths_file() resolves to datasets.yaml inside it."""
         path = Path(str(cfgp.get_config_paths_file()))
-        assert path.name == "config.yaml"
+        assert path.name == "datasets.yaml"
         assert path.is_file()
 
     def test_db_dict_has_required_keys(self):
@@ -54,7 +54,7 @@ class TestConfigPaths:
     def test_field_resolves_against_the_config_dir(self):
         """get_config_paths_field() joins the relative value onto the config dir.
 
-        The result is absolute and normalised: config.yaml's values are written
+        The result is absolute and normalised: datasets.yaml's values are written
         relative to the config dir ("../../tests/fixtures/..."), and the ".."
         segments are collapsed so consumers can compare paths by equality.
         """
@@ -84,13 +84,173 @@ class TestConfigPaths:
         assert cfgp.resolve_config_path(link) == link
 
     def test_cluster_file(self):
-        """get_config_cluster_file() resolves to config_cluster.yaml."""
+        """get_config_cluster_file() resolves to cluster.yaml."""
         path = Path(str(cfgp.get_config_cluster_file()))
-        assert path.name == "config_cluster.yaml"
+        assert path.name == "cluster.yaml"
         assert path.is_file()
 
+    def test_package_ships_templates_and_no_loadable_config(self):
+        """Only *.example.yaml ship, so there is nothing to load implicitly."""
+        pkg = cfgp.get_packaged_config_path()
+        for name in cfgp.REQUIRED_CONFIG_FILES:
+            assert not (pkg / name).exists(), f"{name} must not ship; use {name[:-5]}.example.yaml"
+            assert (pkg / f"{name[:-5]}.example.yaml").is_file()
+
+    def test_templates_carry_no_relative_paths(self):
+        """Template paths are absolute placeholders.
+
+        A relative path in a template would resolve against wherever the user
+        copied it and appear to work; /path/to/... cannot be mistaken for a
+        real location.
+        """
+        import yaml as _yaml
+        path_fields = {
+            "input_path", "outdir_pq", "outdir_schema", "tmp_path",
+            "ln_path", "download_path",
+        }
+        cfg = _yaml.safe_load(
+            (cfgp.get_packaged_config_path() / "datasets.example.yaml").read_text()
+        )
+        found = [
+            (db, field, value)
+            for db, fields in cfg.items()
+            for field, value in (fields or {}).items()
+            if field in path_fields and isinstance(value, str)
+        ]
+        assert found, "no path fields found -- have they been renamed?"
+        for db, field, value in found:
+            assert value.startswith("/"), f"{db}.{field} is relative: {value}"
+
+
+class TestConfigDirEnvVar:
+    """CROCOLAKE_CONFIG_DIR resolution."""
+
+    @staticmethod
+    def _write_config_dir(path, cluster=True, paths_yaml=True):
+        path.mkdir(parents=True, exist_ok=True)
+        if paths_yaml:
+            (path / "datasets.yaml").write_text(
+                "GLODAP_PHY:\n"
+                "  db: GLODAP\n"
+                "  db_type: PHY\n"
+                "  input_path: /srv/site/in\n"
+                "  outdir_pq: relative/out\n"
+            )
+        if cluster:
+            (path / "cluster.yaml").write_text(
+                "GLODAP:\n  n_workers: 3\n  threads_per_worker: 1\n"
+            )
+        return path
+
+    def test_unset_raises(self, monkeypatch):
+        """There is no default. The package ships templates, not a config."""
+        monkeypatch.delenv(cfgp.CONFIG_DIR_ENV_VAR, raising=False)
+        with pytest.raises(cfgp.ConfigDirError, match="is not set"):
+            cfgp.get_config_path()
+
+    def test_set_directory_wins(self, monkeypatch, tmp_path):
+        site = self._write_config_dir(tmp_path / "site")
+        monkeypatch.setenv(cfgp.CONFIG_DIR_ENV_VAR, str(site))
+        assert cfgp.get_config_path() == site
+        assert cfgp.get_config_paths_db_dict("GLODAP_PHY")["db"] == "GLODAP"
+
+    def test_paths_resolve_against_the_site_dir(self, monkeypatch, tmp_path):
+        """Absolute site values pass through; relative ones join the site dir."""
+        site = self._write_config_dir(tmp_path / "site")
+        monkeypatch.setenv(cfgp.CONFIG_DIR_ENV_VAR, str(site))
+        assert cfgp.get_config_paths_field("GLODAP_PHY", "input_path") == Path("/srv/site/in")
+        assert cfgp.get_config_paths_field("GLODAP_PHY", "outdir_pq") == site / "relative/out"
+
+    def test_missing_directory_raises(self, monkeypatch, tmp_path):
+        """A set-but-broken value is fatal, not a reason to use a default."""
+        monkeypatch.setenv(cfgp.CONFIG_DIR_ENV_VAR, str(tmp_path / "not-mounted"))
+        with pytest.raises(cfgp.ConfigDirError, match="not a directory"):
+            cfgp.get_config_path()
+
+    def test_directory_without_cluster_config_raises(self, monkeypatch, tmp_path):
+        """A directory must supply both files, so paths and cluster sizing
+        always come from the same place."""
+        site = self._write_config_dir(tmp_path / "half", cluster=False)
+        monkeypatch.setenv(cfgp.CONFIG_DIR_ENV_VAR, str(site))
+        with pytest.raises(cfgp.ConfigDirError, match="cluster.yaml"):
+            cfgp.get_config_path()
+
+    def test_directory_without_paths_config_raises(self, monkeypatch, tmp_path):
+        site = self._write_config_dir(tmp_path / "half2", paths_yaml=False)
+        monkeypatch.setenv(cfgp.CONFIG_DIR_ENV_VAR, str(site))
+        with pytest.raises(cfgp.ConfigDirError, match="datasets.yaml"):
+            cfgp.get_config_path()
+
+    def test_empty_value_is_treated_as_unset(self, monkeypatch):
+        """An exported-but-empty variable is a shell artefact, not a config."""
+        monkeypatch.setenv(cfgp.CONFIG_DIR_ENV_VAR, "")
+        with pytest.raises(cfgp.ConfigDirError, match="is not set"):
+            cfgp.get_config_path()
+
+    def test_user_home_is_expanded(self, monkeypatch, tmp_path):
+        site = self._write_config_dir(tmp_path / "home" / "cfg")
+        monkeypatch.setenv("HOME", str(tmp_path / "home"))
+        monkeypatch.setenv(cfgp.CONFIG_DIR_ENV_VAR, "~/cfg")
+        assert cfgp.get_config_path() == site
+
+
+class TestConfigDirArgument:
+    """--config-dir, the alternative to exporting the variable."""
+
+    @staticmethod
+    def _parse(argv):
+        import argparse
+        parser = argparse.ArgumentParser()
+        cfgp.add_config_dir_argument(parser)
+        args = parser.parse_args(argv)
+        cfgp.apply_config_dir_argument(args)
+        return args
+
+    def test_flag_sets_the_config_dir(self, monkeypatch, tmp_path):
+        site = TestConfigDirEnvVar._write_config_dir(tmp_path / "site")
+        monkeypatch.delenv(cfgp.CONFIG_DIR_ENV_VAR, raising=False)
+        self._parse(["--config-dir", str(site)])
+        assert cfgp.get_config_path() == site
+
+    def test_flag_wins_over_the_variable(self, monkeypatch, tmp_path):
+        exported = TestConfigDirEnvVar._write_config_dir(tmp_path / "exported")
+        asked_for = TestConfigDirEnvVar._write_config_dir(tmp_path / "asked-for")
+        monkeypatch.setenv(cfgp.CONFIG_DIR_ENV_VAR, str(exported))
+        self._parse(["--config-dir", str(asked_for)])
+        assert cfgp.get_config_path() == asked_for
+
+    def test_absent_flag_leaves_the_variable_alone(self, monkeypatch, tmp_path):
+        exported = TestConfigDirEnvVar._write_config_dir(tmp_path / "exported")
+        monkeypatch.setenv(cfgp.CONFIG_DIR_ENV_VAR, str(exported))
+        self._parse([])
+        assert cfgp.get_config_path() == exported
+
+    def test_flag_is_validated_like_the_variable(self, monkeypatch, tmp_path):
+        monkeypatch.delenv(cfgp.CONFIG_DIR_ENV_VAR, raising=False)
+        self._parse(["--config-dir", str(tmp_path / "nope")])
+        with pytest.raises(cfgp.ConfigDirError):
+            cfgp.get_config_path()
+
+
+class TestSuiteIsPinnedToTestConfig:
+    """The suite reads tests/config/, whatever the shell exports."""
+
+    def test_env_var_points_at_the_test_config_dir(self):
+        from tests.conftest import TEST_CONFIG_DIR
+        assert os.environ[cfgp.CONFIG_DIR_ENV_VAR] == str(TEST_CONFIG_DIR)
+        assert cfgp.get_config_path() == TEST_CONFIG_DIR
+
+    def test_fixture_tree_is_reachable_through_config(self):
+        """The test config points at the committed fixtures."""
+        fixtures = Path(__file__).parent / "fixtures"
+        resolved = cfgp.get_config_paths_field("GLODAP_PHY", "input_path")
+        assert resolved.is_relative_to(fixtures)
+        assert resolved.is_dir()
+
+
+class TestConfigPathsCluster:
     def test_cluster_db_dict_default_file(self):
-        """With no config_file, the packaged config_cluster.yaml is read."""
+        """With no config_file, the packaged cluster.yaml is read."""
         cfg = cfgp.get_config_cluster_db_dict("GLODAP")
         assert "n_workers" in cfg
         assert "threads_per_worker" in cfg
@@ -113,7 +273,7 @@ class TestDownloaderConfigResolution:
             Downloader()
 
     def test_unknown_db_raises(self):
-        """An unknown db/db_type pair fails on the config.yaml lookup."""
+        """An unknown db/db_type pair fails on the datasets.yaml lookup."""
         with pytest.raises(KeyError):
             Downloader(config={"db": "NOT_A_DB", "db_type": "PHY"})
 
@@ -144,7 +304,7 @@ class TestDownloaderConfigResolution:
         """db and db_type land on the instance, db_type upper-cased.
 
         A lower-case db_type also trips the mismatch warning, because the
-        constructor compares the user's raw value against config.yaml's
+        constructor compares the user's raw value against datasets.yaml's
         after upper-casing only its own copy.
         """
         with pytest.warns(UserWarning, match="not matching at key db_type"):
@@ -157,12 +317,12 @@ class TestDownloaderConfigResolution:
         assert d.db_type == DB_TYPE
 
     def test_absent_keys_are_filled_from_config_yaml(self, tmp_path):
-        """Keys the user omits are read from the db's config.yaml block."""
+        """Keys the user omits are read from the db's datasets.yaml block."""
         disk = cfgp.get_config_paths_db_dict(DB_KEY)
         config = {"db": DB, "db_type": DB_TYPE, "input_path": str(tmp_path)}
         d = Downloader(config=config)
 
-        # GLODAP_PHY declares overwrite in config.yaml; the user did not
+        # GLODAP_PHY declares overwrite in datasets.yaml; the user did not
         assert "overwrite" in disk
         assert d.overwrite == disk["overwrite"]
         # the merge writes back into the caller's dict -- a side effect worth
@@ -173,7 +333,7 @@ class TestDownloaderConfigResolution:
     def test_user_values_win_over_config_yaml(self, tmp_path):
         """A key the user supplies is not overwritten by the disk value."""
         disk = cfgp.get_config_paths_db_dict(DB_KEY)
-        assert disk["overwrite"] is True, "fixture assumes config.yaml sets True"
+        assert disk["overwrite"] is True, "fixture assumes datasets.yaml sets True"
         d = Downloader(config={
             "db": DB,
             "db_type": DB_TYPE,
@@ -183,7 +343,7 @@ class TestDownloaderConfigResolution:
         assert d.overwrite is False
 
     def test_download_option_defaults(self, tmp_path):
-        """Options absent from both user config and config.yaml take defaults."""
+        """Options absent from both user config and datasets.yaml take defaults."""
         disk = cfgp.get_config_paths_db_dict(DB_KEY)
         assert "num_threads" not in disk and "dryrun" not in disk
         d = Downloader(config={

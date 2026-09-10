@@ -15,7 +15,7 @@ setup(
     long_description=long_description,
     author='Enrico Milanese',
     author_email='enrico.milanese@whoi.edu',
-    packages=find_packages(),
+    packages=find_packages(exclude=["tests", "tests.*"]),
     install_requires=parse_requirements('requirements.txt'),
     entry_points={
         'console_scripts': [
@@ -40,9 +40,11 @@ setup(
     include_package_data=True,
     package_data={
         "crocolaketools": [
-            "config/config.yaml",
-            "config/config_cluster.yaml",
+            "config/datasets.example.yaml",
+            "config/cluster.example.yaml",
             "config/generate_crocolake_symlinks.sh",
+            "config/resolve_config_dir.sh",
+            "utils/parse_yaml_argo_gdac.sh",
         ]
     }
 )

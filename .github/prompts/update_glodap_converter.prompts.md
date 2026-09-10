@@ -30,7 +30,7 @@ Documentation findings:
 Implementation requirements:
 - Update glodap2parquet in scripts/ if necessary
 - Update db_names.py and db_params.py if necessary
-- config.yaml and config_cluster.yaml should not need be updated
+- datasets.yaml and cluster.yaml should not need be updated
 - Ensure generate_crocolake_symlinks.sh includes the outputs.
 - Add converter tests and source-to-Parquet integrity tests.
 

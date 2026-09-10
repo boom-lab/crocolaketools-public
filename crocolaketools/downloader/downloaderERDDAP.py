@@ -117,7 +117,7 @@ class DownloaderERDDAP(Downloader):
         # if False, chunk requests fire without the first-byte gate (see NoOpGate)
         self.gated_parallel_download = config.get("gated_parallel_download", True)
 
-        # Optional user-defined constraints from config.yaml.
+        # Optional user-defined constraints from datasets.yaml.
         # Supports all 7 ERDDAP tabledap operators: =, !=, =~, <, <=, >, >=
         # time>= / time<= clamp the chunking window in _download_one.
         # All other constraints are passed to ERDDAP on every chunk request.

@@ -47,7 +47,7 @@ def argo2argoqc_phy(argo_path,outdir_pqt,fname_pq,use_config_file):
         ConverterPHY = ConverterArgoQC(config)
 
     else: # reads from file
-        print("Using configuration from config.yaml")
+        print("Using configuration from datasets.yaml")
         ConverterPHY = ConverterArgoQC(db_type='phy')
 
     ConverterPHY.convert()
@@ -62,7 +62,11 @@ def main():
     parser.add_argument('-f', help="Basename for output files", required=False, default="1002_PHY_ARGO-QC-DEV")
     parser.add_argument('--config', action='store_true', help="Use config files instead of parsing arguments", required=False, default=None)
 
+
+    cfgp.add_config_dir_argument(parser)
     args = parser.parse_args()
+
+    cfgp.apply_config_dir_argument(args)
 
     argo2argoqc_phy(args.i,args.o,args.f,args.config)
 

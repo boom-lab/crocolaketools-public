@@ -205,7 +205,7 @@ class TestSprayDownload:
  
 @pytest.fixture
 def mock_base_downloader():
-    """Patch Downloader.__init__ so tests don't need config.yaml or
+    """Patch Downloader.__init__ so tests don't need datasets.yaml or
     crocolakeloader.params to be installed."""
     with patch(
         "crocolaketools.downloader.downloaderSprayGliders.Downloader.__init__",

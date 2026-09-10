@@ -10,6 +10,9 @@ scripts/data/
 scripts/schemas/
 tests/fixtures/parquet/
 tests/fixtures/demo_tmp_*/
+# outdir_schema is relative to the config dir, so generated schemas land there
+tests/config/schema/
+tests/config/schemas/
 
 # C extensions
 *.so

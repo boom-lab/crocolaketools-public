@@ -101,14 +101,18 @@ def main():
     parser.add_argument('-f', help="Basename for output files", required=False, default="merge_crocolake_out")
     parser.add_argument('--config', action='store_true', help="Use config files instead of parsing arguments", required=False, default=None)
 
+
+    cfgp.add_config_dir_argument(parser)
     args = parser.parse_args()
+
+    cfgp.apply_config_dir_argument(args)
 
     if not (args.d.upper() == "PHY" or args.d.upper() == "BGC"):
         raise ValueError("CrocoLake type must be PHY or BGC.")
 
     if args.config:
 
-        print("Using configuration from config.yaml")
+        print("Using configuration from datasets.yaml")
         # generage symlinks
         with importlib.resources.as_file(
                 importlib.resources.files("crocolaketools.config").joinpath("generate_crocolake_symlinks.sh")

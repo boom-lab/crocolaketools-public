@@ -53,7 +53,7 @@ class DownloaderSprayGliders(Downloader):
     for subsequent conversion by ConverterSprayGliders.
 
     The destination directory is resolved from the config dict /
-    config.yaml, mirroring the pattern used by ConverterSprayGliders and
+    datasets.yaml, mirroring the pattern used by ConverterSprayGliders and
     DownloaderGLODAP.
 
     Files are skipped if they already exist locally and overwrite=False.
@@ -83,7 +83,7 @@ class DownloaderSprayGliders(Downloader):
         ---------
         config   : configuration dictionary. Must contain at least
                    'db' (='SprayGliders') and 'db_type' ('PHY' or 'BGC').
-                   Any key not supplied is read from config.yaml.
+                   Any key not supplied is read from datasets.yaml.
                    The resolved 'input_path' is used as the download
                    destination (set by the base Downloader).
         fnames   : dict mapping local filename to remote ERDDAP path.
@@ -98,7 +98,7 @@ class DownloaderSprayGliders(Downloader):
                 'db_type': 'PHY',
             }
 
-        # base class resolves input_path from config + config.yaml and
+        # base class resolves input_path from config + datasets.yaml and
         # creates the directory if needed
         super().__init__(config)
 

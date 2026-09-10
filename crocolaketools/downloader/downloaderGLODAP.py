@@ -43,7 +43,7 @@ class DownloaderGLODAP(Downloader):
     subsequent conversion by ConverterGLODAP.
 
     The destination directory is resolved from the config dict /
-    config.yaml, mirroring the pattern used by ConverterGLODAP and
+    datasets.yaml, mirroring the pattern used by ConverterGLODAP and
     DownloaderURLList.
 
     The GEOMAR mirror serves the CSV wrapped in a zip archive. The
@@ -74,7 +74,7 @@ class DownloaderGLODAP(Downloader):
         ---------
         config    : configuration dictionary. Must contain at least
                     'db' (='GLODAP') and 'db_type' ('PHY' or 'BGC').
-                    Any key not supplied is read from config.yaml.
+                    Any key not supplied is read from datasets.yaml.
                     The resolved 'input_path' is used as the download
                     destination (set by the base Downloader).
         fname     : filename to save on disk.
@@ -87,7 +87,7 @@ class DownloaderGLODAP(Downloader):
                 'db_type': 'PHY',
             }
 
-        # base class resolves input_path from config + config.yaml and
+        # base class resolves input_path from config + datasets.yaml and
         # creates the directory if needed
         super().__init__(config)
 

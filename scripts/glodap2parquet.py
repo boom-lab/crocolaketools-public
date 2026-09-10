@@ -42,7 +42,7 @@ def glodap2parquet(glodap_path=None, glodap_name=None, outdir_pqt_phy=None, outd
         ConverterPHY = ConverterGLODAP(config)
 
     else: # reads from file
-        print("Using configuration from config.yaml")
+        print("Using configuration from datasets.yaml")
         ConverterPHY = ConverterGLODAP(db_type='phy')
 
     ConverterPHY.convert(
@@ -65,7 +65,7 @@ def glodap2parquet(glodap_path=None, glodap_name=None, outdir_pqt_phy=None, outd
         ConverterBGC = ConverterGLODAP(config)
 
     else: # reads from file
-        print("Using configuration from config.yaml")
+        print("Using configuration from datasets.yaml")
         ConverterBGC = ConverterGLODAP(db_type='bgc')
 
     ConverterBGC.convert(
@@ -86,7 +86,11 @@ def main():
     parser.add_argument('-b', help="Basename for output files", required=False, default=None)
     parser.add_argument('--config', action='store_true', help="Use config files instead of parsing arguments", required=False, default=None)
 
+
+    cfgp.add_config_dir_argument(parser)
     args = parser.parse_args()
+
+    cfgp.apply_config_dir_argument(args)
 
     if args.b is None and args.n == "GLODAPv3_Merged_Master_File.csv":
         basename = args.n[:-4]
