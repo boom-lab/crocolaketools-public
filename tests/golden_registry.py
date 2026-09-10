@@ -5,7 +5,7 @@
 Add an entry to registry when a new converter is created.
 
 Each entry names a (converter, db_type) pair already exercised by
-tests/fixtures/, the cluster.yaml key to use for its dask_client, and
+tests/fixtures/, the dask_cluster.yaml key to use for its dask_client, and
 which output columns are derived via gsw (compared with
 numpy.testing.assert_allclose(atol=1e-10, rtol=1e-10)) rather than exact match.
 
@@ -33,7 +33,7 @@ class GoldenTarget(NamedTuple):
     name: str                  # tests/golden/<name>/ directory
     converter_cls: Type
     db_type: str                # "PHY" or "BGC"
-    cluster_key: str            # key into tests/config/cluster.yaml
+    cluster_key: str            # key into tests/config/dask_cluster.yaml
     tolerant_columns: List[str] # compared with atol=1e-10, rtol=1e-10; all others exact
     # SprayGliders only: it has no convert() override, so the base class's
     # generic convert() would try to read straight from tmp_path -- it needs

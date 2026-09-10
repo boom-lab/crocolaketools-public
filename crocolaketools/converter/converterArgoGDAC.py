@@ -78,7 +78,7 @@ class ConverterArgoGDAC(Converter):
         db_names       -- database types to convert (PHY and/or BGC)
         outdir_parquet -- destination directory for the parquet output
         schema_path    -- directory to write the generated schema to
-        cluster_key    -- key in cluster.yaml to size the client from
+        cluster_key    -- key in dask_cluster.yaml to size the client from
                           (default: ARGO-GDAC_<db_type>)
         client         -- an existing dask client to use instead of building
                           one; it is left running for the caller to close

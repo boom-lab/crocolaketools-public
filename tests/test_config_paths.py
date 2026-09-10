@@ -15,7 +15,7 @@ import pytest
 import crocolaketools.config.config_paths as cfgp
 from crocolaketools.downloader.downloader import Downloader
 
-TEST_CONFIG_CLUSTER_FILE = Path(__file__).parent / "config" / "cluster.yaml"
+TEST_CONFIG_CLUSTER_FILE = Path(__file__).parent / "config" / "dask_cluster.yaml"
 
 # a db/db_type pair that exists in the packaged datasets.yaml
 DB = "GLODAP"
@@ -84,9 +84,9 @@ class TestConfigPaths:
         assert cfgp.resolve_config_path(link) == link
 
     def test_cluster_file(self):
-        """get_config_cluster_file() resolves to cluster.yaml."""
+        """get_config_cluster_file() resolves to dask_cluster.yaml."""
         path = Path(str(cfgp.get_config_cluster_file()))
-        assert path.name == "cluster.yaml"
+        assert path.name == "dask_cluster.yaml"
         assert path.is_file()
 
     def test_package_ships_templates_and_no_loadable_config(self):
@@ -137,7 +137,7 @@ class TestConfigDirEnvVar:
                 "  outdir_pq: relative/out\n"
             )
         if cluster:
-            (path / "cluster.yaml").write_text(
+            (path / "dask_cluster.yaml").write_text(
                 "GLODAP:\n  n_workers: 3\n  threads_per_worker: 1\n"
             )
         return path
@@ -172,7 +172,7 @@ class TestConfigDirEnvVar:
         always come from the same place."""
         site = self._write_config_dir(tmp_path / "half", cluster=False)
         monkeypatch.setenv(cfgp.CONFIG_DIR_ENV_VAR, str(site))
-        with pytest.raises(cfgp.ConfigDirError, match="cluster.yaml"):
+        with pytest.raises(cfgp.ConfigDirError, match="dask_cluster.yaml"):
             cfgp.get_config_path()
 
     def test_directory_without_paths_config_raises(self, monkeypatch, tmp_path):
@@ -271,7 +271,7 @@ class TestSuiteIsPinnedToTestConfig:
 
 class TestConfigPathsCluster:
     def test_cluster_db_dict_default_file(self):
-        """With no config_file, the packaged cluster.yaml is read."""
+        """With no config_file, the packaged dask_cluster.yaml is read."""
         cfg = cfgp.get_config_cluster_db_dict("GLODAP")
         assert "n_workers" in cfg
         assert "threads_per_worker" in cfg

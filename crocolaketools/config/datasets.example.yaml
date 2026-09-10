@@ -2,7 +2,7 @@
 #
 #   mkdir -p ~/my-crocolake-config
 #   cp datasets.example.yaml ~/my-crocolake-config/datasets.yaml
-#   cp cluster.example.yaml  ~/my-crocolake-config/cluster.yaml
+#   cp dask_cluster.example.yaml  ~/my-crocolake-config/dask_cluster.yaml
 #   # replace the /path/to/... placeholders below
 #
 # Then name the directory, either per-run or for the shell:
@@ -10,7 +10,7 @@
 #   <script> --config --config-dir ~/my-crocolake-config
 #   export CROCOLAKE_CONFIG_DIR=~/my-crocolake-config
 #
-# The directory must contain both datasets.yaml and cluster.yaml.
+# The directory must contain both datasets.yaml and dask_cluster.yaml.
 # Relative paths resolve against it; absolute paths are used as written.
 # To run against the repository's test fixtures instead, use its tests/config
 # directory.

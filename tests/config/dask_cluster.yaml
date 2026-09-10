@@ -1,6 +1,6 @@
 # Cluster settings for the test suite, sized for CI.
 #
-# Every dataset key from cluster.example.yaml is repeated here: a config
+# Every dataset key from dask_cluster.example.yaml is repeated here: a config
 # directory must cover all the datasets its datasets.yaml declares.
 # Field names must be arguments to dask's LocalCluster Client
 #  (https://docs.dask.org/en/stable/deploying-python.html)

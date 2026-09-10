@@ -1133,7 +1133,7 @@ class TestConverter:
 
 ####################################################################################################
 class TestConverterArgoGDACCluster:
-    """ConverterArgoGDAC.convert_dask_tools takes its sizing from cluster.yaml.
+    """ConverterArgoGDAC.convert_dask_tools takes its sizing from dask_cluster.yaml.
 
     The Client is patched out so these run without starting a cluster; the
     conversion itself is covered by test_golden_argo_gdac.

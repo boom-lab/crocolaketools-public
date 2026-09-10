@@ -22,7 +22,7 @@ CONFIG_DIR_ENV_VAR = "CROCOLAKE_CONFIG_DIR"
 #: Files a configuration directory must provide. Both, or neither: a directory
 #: holding only datasets.yaml would leave the cluster sizing to come from
 #: somewhere else, which is never what the author of either file intended.
-REQUIRED_CONFIG_FILES = ("datasets.yaml", "cluster.yaml")
+REQUIRED_CONFIG_FILES = ("datasets.yaml", "dask_cluster.yaml")
 
 class ConfigDirError(RuntimeError):
     """Raised when CROCOLAKE_CONFIG_DIR is missing or unusable.
@@ -82,7 +82,7 @@ def get_config_paths_field(db_name: str, field: str) -> Path:
     return resolve_config_path(config_db[field])
 
 def get_config_cluster_file() -> Path:
-    return get_config_path() / "cluster.yaml"
+    return get_config_path() / "dask_cluster.yaml"
 
 def get_config_cluster_db_dict(
         db_name: str,
@@ -90,8 +90,8 @@ def get_config_cluster_db_dict(
 ) -> dict[str, Any]:
     """Read db_name's cluster settings.
 
-    config_file -- path to cluster.yaml
-                   (default: the resolved config dir's cluster.yaml)
+    config_file -- path to dask_cluster.yaml
+                   (default: the resolved config dir's dask_cluster.yaml)
     """
     config_paths = config_file if config_file is not None else get_config_cluster_file()
     with open(config_paths) as f:

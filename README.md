@@ -58,9 +58,9 @@ Where `<converter_script>` depends on the converter (e.g. `glodap2parquet`, `arg
 ##### Configuration is required
 
 `crocolaketools` reads its paths from a configuration directory holding
-`datasets.yaml` (per-database paths and flags) and `cluster.yaml` (dask
+`datasets.yaml` (per-database paths and flags) and `dask_cluster.yaml` (dask
 settings). There is no default: the package ships `datasets.example.yaml` and
-`cluster.example.yaml` as templates, not loadable configuration, so a run
+`dask_cluster.example.yaml` as templates, not loadable configuration, so a run
 either names the directory it wants or stops with an error.
 
 Name it with `--config-dir`:
@@ -87,7 +87,7 @@ placeholders:
 ```
 mkdir -p ~/my-crocolake-config
 cp crocolaketools/config/datasets.example.yaml ~/my-crocolake-config/datasets.yaml
-cp crocolaketools/config/cluster.example.yaml  ~/my-crocolake-config/cluster.yaml
+cp crocolaketools/config/dask_cluster.example.yaml  ~/my-crocolake-config/dask_cluster.yaml
 $EDITOR ~/my-crocolake-config/datasets.yaml
 glodap2parquet --config --config-dir ~/my-crocolake-config
 ```

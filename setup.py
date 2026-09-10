@@ -41,7 +41,7 @@ setup(
     package_data={
         "crocolaketools": [
             "config/datasets.example.yaml",
-            "config/cluster.example.yaml",
+            "config/dask_cluster.example.yaml",
             "config/generate_crocolake_symlinks.sh",
             "config/resolve_config_dir.sh",
             "utils/parse_yaml_argo_gdac.sh",
