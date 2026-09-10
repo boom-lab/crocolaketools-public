@@ -24,6 +24,9 @@ from crocolaketools import db_params
 from crocolaketools.converter.converter import Converter
 ##########################################################################
 
+#: Profiles per netCDF chunk when datasets.yaml does not say.
+DEFAULT_CHUNK_PROFILE = 5000
+
 class ConverterSprayGliders(Converter):
 
     """class ConverterSprayGliders: methods to generate parquet schemas for
@@ -46,6 +49,9 @@ class ConverterSprayGliders(Converter):
             }
 
         Converter.__init__(self, config)
+
+        # Converter.__init__ fills config from datasets.yaml, so read after it
+        self.chunk_profile = config.get("chunk_profile", DEFAULT_CHUNK_PROFILE)
 
     # ------------------------------------------------------------------ #
     # Methods                                                            #
@@ -91,6 +97,8 @@ class ConverterSprayGliders(Converter):
         Arguments:
         filename -- file name, excluding relative path
         lock -- dask lock to use for concurrency
+        chunk_profile -- profiles per chunk
+                         (default: chunk_profile in datasets.yaml, else 5000)
         """
 
         input_fname = self.input_path / filename
@@ -98,7 +106,7 @@ class ConverterSprayGliders(Converter):
 
         # chunking is empirical to force small chunks
         if chunk_profile is None:
-            chunk_profile = 5000
+            chunk_profile = self.chunk_profile
         chunk_depth = -1
         chunk_trajectory = -1
         chunk_dict = {

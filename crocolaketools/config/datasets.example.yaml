@@ -75,12 +75,16 @@ ARGO-GDAC_PHY:
   db_type: PHY
   input_path: /path/to/crocolake/original/ARGO_GDAC/GDAC/dac/
   outdir_pq: /path/to/crocolake/parquet/ARGO-GDAC_PHY/
+  chunk_size: 1000
+  num_procs: 36
 
 ARGO-GDAC_BGC:
   db: ARGO-GDAC
   db_type: BGC
   input_path: /path/to/crocolake/original/ARGO_GDAC/GDAC/dac/
   outdir_pq: /path/to/crocolake/parquet/ARGO-GDAC_BGC/
+  chunk_size: 1000
+  num_procs: 36
 
 # GLODAP config
 GLODAP_PHY:
@@ -158,6 +162,7 @@ SprayGliders_PHY:
   add_derived_vars: True
   overwrite: True
   tmp_path: /path/to/crocolake/original/tmp_SPRAY_PHY/
+  chunk_profile: 5000
 
 SprayGliders_BGC:
   db: SprayGliders
@@ -169,6 +174,7 @@ SprayGliders_BGC:
   add_derived_vars: True
   overwrite: True
   tmp_path: /path/to/crocolake/original/tmp_SPRAY_BGC/
+  chunk_profile: 5000
 
 # SPOTS
 SPOTS_PHY:

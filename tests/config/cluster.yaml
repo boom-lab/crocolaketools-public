@@ -26,6 +26,18 @@ TESTS_MULTIWORKER:
 
 
 # Per-dataset keys, CI-sized.
+ARGO-GDAC_PHY:
+    threads_per_worker: 1
+    n_workers: 1
+    memory_limit: '2GB'
+    processes: True
+
+ARGO-GDAC_BGC:
+    threads_per_worker: 1
+    n_workers: 1
+    memory_limit: '2GB'
+    processes: True
+
 ARGO-QC_PHY:
     threads_per_worker: 1
     n_workers: 1
