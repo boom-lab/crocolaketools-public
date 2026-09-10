@@ -3,10 +3,10 @@ from datetime import datetime, timedelta
 from dateutil.parser import parse as parsedate
 import requests
 import time
+from crocolaketools.downloader.downloader import first_reachable_url
 import pathlib
 from pathlib import Path
 import urllib3
-import shutil
 import numpy as np
 import pandas as pd
 from scipy import interpolate
@@ -32,6 +32,24 @@ root = '.'
 ##########################################################################
 
 # Function to download and parse GDAC synthetic profile index file
+#: GDAC mirrors, in the order they are tried.
+GDAC_MIRRORS = (
+    'https://data-argo.ifremer.fr/',
+    'https://www.usgodae.org/ftp/outgoing/argo/',
+)
+
+def get_gdac_url(mirrors=GDAC_MIRRORS, timeout=10):
+    """Return the root URL of the first reachable GDAC mirror.
+
+    Arguments:
+        mirrors: root URLs to try, in order
+        timeout: seconds to wait for each mirror's response
+
+    Raises RuntimeError if none of them answer, rather than letting the caller
+    start a download against a dead host.
+    """
+    return first_reachable_url(mirrors, timeout=timeout)
+
 def argo_gdac(gdac_path='./', dataset="bgc", lat_range=None,lon_range=None,start_date=None,end_date=None,sensors=None,floats=None,overwrite_profiles=False,skip_downloads=True,download_individual_profs=False,save_to=None,verbose=True,dryrun=False,dac_url_root=None,checktime=True, NPROC=1):
     """Downloads GDAC Sprof index file, then selects float profiles based on criteria.
       Either returns information on profiles and floats (if skip_downloads=True) or downloads them (if False).
@@ -96,7 +114,7 @@ def argo_gdac(gdac_path='./', dataset="bgc", lat_range=None,lon_range=None,start
         gdac_path.mkdir(parents = True, exist_ok = True)
 
     if not dryrun:
-        gdac_url  = 'https://usgodae.org/pub/outgoing/argo/'
+        gdac_url  = get_gdac_url()
         args = (gdac_url,gdac_name,gdac_path,True,verbose,checktime,None)
         download_file(args)
 
@@ -165,7 +183,7 @@ def argo_gdac(gdac_path='./', dataset="bgc", lat_range=None,lon_range=None,start
     if not skip_downloads:
         downloaded_filenames = []
         if dac_url_root is None:
-            dac_url_root = 'https://usgodae.org/pub/outgoing/argo/dac/'
+            dac_url_root = get_gdac_url() + 'dac/'
 
         if download_individual_profs:
             for p_idx in gdac_index_subset.index:
@@ -398,7 +416,8 @@ def download_file(args):
             return
 
         with open(localfile,'wb') as out_file:
-            shutil.copyfileobj(response.raw,out_file)
+            for chunk in response.iter_content(chunk_size=None):
+                out_file.write(chunk)
             del response
         if verbose: print(rank_str + '>>> Successfully downloaded ' + filename + '.')
 

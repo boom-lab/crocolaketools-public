@@ -28,6 +28,28 @@ from crocolaketools.config import config_paths as cfgp
 ##########################################################################
  
  
+def first_reachable_url(urls, timeout=10):
+    """Return the first URL in urls that answers a HEAD request.
+
+    Arguments:
+        urls    -- candidate URLs, tried in order
+        timeout -- seconds to wait for each candidate
+
+    Raises RuntimeError if none of them answer, so a caller never starts a
+    download against a dead host.
+    """
+    for url in urls:
+        try:
+            response = requests.head(url, timeout=timeout, allow_redirects=True)
+        except requests.RequestException as e:
+            print(f"{url} is unreachable ({e}), trying the next one.")
+            continue
+        if response.ok:
+            return url
+        print(f"{url} returned status {response.status_code}, trying the next one.")
+    raise RuntimeError(f"None of the URLs are reachable: {list(urls)}")
+
+
 class Downloader:
  
     """class Downloader: common facilities to configure downloads for different

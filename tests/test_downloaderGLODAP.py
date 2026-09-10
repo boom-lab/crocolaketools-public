@@ -175,7 +175,7 @@ class TestGetUrl:
         mock_resp = MagicMock()
         mock_resp.ok = True
 
-        with patch("crocolaketools.downloader.downloaderGLODAP.requests.head",
+        with patch("crocolaketools.downloader.downloader.requests.head",
                    return_value=mock_resp):
             url = d.get_url()
         assert url == GLODAP_URL_NCEI
@@ -184,14 +184,14 @@ class TestGetUrl:
         """Falls back to GEOMAR URL when NCEI raises RequestException."""
         d = DownloaderGLODAP()
 
-        def head_side_effect(url, timeout):
+        def head_side_effect(url, **kwargs):
             if url == GLODAP_URL_NCEI:
                 raise requests.RequestException("NCEI down")
             mock_resp = MagicMock()
             mock_resp.ok = True
             return mock_resp
 
-        with patch("crocolaketools.downloader.downloaderGLODAP.requests.head",
+        with patch("crocolaketools.downloader.downloader.requests.head",
                    side_effect=head_side_effect):
             url = d.get_url()
         assert url == GLODAP_URL_GEOMAR
@@ -200,7 +200,7 @@ class TestGetUrl:
         """RuntimeError raised when all URLs are unreachable."""
         d = DownloaderGLODAP()
 
-        with patch("crocolaketools.downloader.downloaderGLODAP.requests.head",
+        with patch("crocolaketools.downloader.downloader.requests.head",
                    side_effect=requests.RequestException("all down")):
             with pytest.raises(RuntimeError, match="None of the URLs are reachable"):
                 d.get_url()

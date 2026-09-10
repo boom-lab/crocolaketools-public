@@ -11,7 +11,7 @@
 ##########################################################################
 import requests
 
-from crocolaketools.downloader.downloader import Downloader
+from crocolaketools.downloader.downloader import Downloader, first_reachable_url
 ##########################################################################
 
 # GLODAPv3.2026 master file constants
@@ -154,18 +154,7 @@ class DownloaderGLODAP(Downloader):
         RuntimeError
             If all candidate URLs are unreachable.
         """
-        urls = [
-            GLODAP_URL_NCEI,
-            GLODAP_URL_GEOMAR,
-        ]
-        for url in urls:
-            try:
-                response = requests.head(url, timeout=5)
-                if response.ok:
-                    return url
-            except requests.RequestException:
-                pass
-        raise RuntimeError(f"None of the URLs are reachable: {urls}")
+        return first_reachable_url([GLODAP_URL_NCEI, GLODAP_URL_GEOMAR], timeout=5)
 
 ##########################################################################
 
