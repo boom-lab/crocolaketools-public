@@ -1,0 +1,3 @@
+# setup.py reads requirements.txt at build time, so this MANIFEST is needed to
+# build tarballs of the release
+include requirements.txt

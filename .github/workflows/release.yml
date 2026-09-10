@@ -1,0 +1,101 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: full suite, build, publish
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          # environment.yml pip-installs ./crocolakeloader/
+          submodules: true
+          fetch-depth: 0
+
+      # written by hand, one file per tag
+      - name: Release notes must be written
+        run: |
+          notes="docs/releases/${GITHUB_REF_NAME}.md"
+          if [ ! -s "$notes" ]; then
+            echo "::error::${notes} is missing or empty. Write the release notes, commit them, and retag." >&2
+            exit 1
+          fi
+          echo "Using ${notes}:"
+          cat "$notes"
+
+      # the version is hand-edited in setup.py, so a tag can disagree with it
+      - name: Tag must match setup.py version
+        run: |
+          tag="${GITHUB_REF_NAME#v}"
+          pkg=$(sed -n "s/.*version='\([^']*\)'.*/\1/p" setup.py | head -1)
+          echo "tag=${tag} setup.py=${pkg}"
+          if [ "$tag" != "$pkg" ]; then
+            echo "::error::tag ${GITHUB_REF_NAME} does not match setup.py version ${pkg}; bump setup.py or retag" >&2
+            exit 1
+          fi
+
+      - name: Set up micromamba
+        uses: mamba-org/setup-micromamba@v2
+        with:
+          environment-file: environment.yml
+          cache-environment: true
+
+      - name: Install package
+        shell: bash -l {0}
+        run: |
+          python -m pip install build
+          pip install -e .
+
+      - name: Full test suite
+        shell: bash -l {0}
+        run: |
+          pytest -ra --tb=short --durations=10 tests/
+
+      - name: Build sdist and wheel
+        shell: bash -l {0}
+        run: |
+          python -m build
+
+      # SLURM invokes the shell layer directly, so it must be in the artifact
+      - name: Wheel ships the config templates and shell scripts
+        shell: bash -l {0}
+        run: |
+          python - <<'PY'
+          import glob, sys, zipfile
+          names = zipfile.ZipFile(glob.glob("dist/*.whl")[0]).namelist()
+          required = [
+              "crocolaketools/config/datasets.example.yaml",
+              "crocolaketools/config/dask_cluster.example.yaml",
+              "crocolaketools/config/resolve_config_dir.sh",
+              "crocolaketools/config/generate_crocolake_symlinks.sh",
+              "crocolaketools/utils/parse_yaml_argo_gdac.sh",
+          ]
+          missing = [r for r in required if r not in names]
+          forbidden = [n for n in names if n.startswith("tests/")]
+          loadable = [n for n in names
+                      if n.endswith(("config/datasets.yaml", "config/dask_cluster.yaml"))]
+          for label, bad in (("missing", missing),
+                             ("tests/ must not ship", forbidden),
+                             ("loadable config must not ship", loadable)):
+              if bad:
+                  print(f"::error::{label}: {bad}")
+          sys.exit(1 if (missing or forbidden or loadable) else 0)
+          PY
+
+      - name: Create the GitHub release
+        shell: bash -l {0}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "${GITHUB_REF_NAME}" dist/* \
+            --title "${GITHUB_REF_NAME}" \
+            --notes-file "docs/releases/${GITHUB_REF_NAME}.md"
