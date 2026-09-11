@@ -1,0 +1,1284 @@
+#!/usr/bin/env python3
+
+## @file test_converter.py
+#
+#
+## @author Enrico Milanese <enrico.milanese@whoi.edu>
+#
+## @date Fri 22 Nov 2024
+#
+##########################################################################
+import glob
+import importlib.resources
+import os
+import random
+from pathlib import Path
+from pprint import pprint
+import shutil
+terminal_width = shutil.get_terminal_size().columns
+import yaml
+
+import dask.dataframe as dd
+from dask.distributed import Client
+import numpy as np
+import pandas as pd
+import pyarrow as pa
+import pyarrow.parquet as pq
+import pytest
+import xarray as xr
+
+from crocolaketools.config import config_paths as cfgp
+from crocolaketools.converter.converterSprayGliders import ConverterSprayGliders
+from crocolaketools.converter.converterArgoQC import ConverterArgoQC
+from crocolaketools.converter.converterGLODAP import ConverterGLODAP
+from crocolaketools.converter.converterCPR import ConverterCPR
+from crocolaketools.converter.converterSaildrones import ConverterSaildrones
+from crocolaketools import db_names,db_params
+
+def _plausible_extreme_profiles():
+    """(LATITUDE, LONGITUDE, PSAL, PRES, TEMP) profiles spanning the ocean's
+    realistic physical envelope -- polar to tropical, brackish to
+    hypersaline, surface to abyssal -- so a derived-variable bounds check
+    exercises near-extreme values.
+    """
+    data = {
+        # polar surface, tropical surface, mid-lat abyssal, coastal
+        # brackish, hypersaline restricted sea, cold deep salty, warm-salty
+        # outflow at depth, deep trench
+        'LATITUDE':  [-70.0,  10.0,    40.0,   45.0,  20.0,  55.0,   36.0,   11.0],
+        'LONGITUDE': [-30.0,  -170.0,  -40.0,  -65.0, 38.0,  -20.0,  5.0,    -155.0],
+        'PSAL':      [34.5,   36.0,    34.9,   5.0,   40.0,  34.9,   38.4,   34.7],
+        'PRES':      [5.0,    5.0,     5000.0, 2.0,   5.0,   4000.0, 1000.0, 10000.0],
+        'TEMP':      [-1.8,   30.0,    2.0,    15.0,  32.0,  3.0,    13.0,   1.5],
+    }
+    return pd.DataFrame(data)
+
+##########################################################################
+class TestConverter:
+
+#------------------------------------------------------------------------------#
+## Set of tests for the Converter class constructor
+
+    def test_converter_glodap_v3_read_and_standardize(self):
+        """Test reading the unprefixed GLODAPv3 demo CSV."""
+        converter = ConverterGLODAP(db_type="PHY")
+        source = pd.read_csv(
+            converter.input_path / "demo_GLODAP.csv",
+            nrows=100,
+        ).convert_dtypes(dtype_backend="pyarrow")
+        profiled = converter.add_profile_id(
+            dd.from_pandas(source, npartitions=2)
+        ).compute()
+        profile_minimums = (
+            profiled[["expocode", "profile_nb"]]
+            .drop_duplicates()
+            .groupby("expocode")["profile_nb"]
+            .min()
+        )
+        assert (profile_minimums == 1).all()
+
+        ddf = converter.standardize_data(dd.from_pandas(source, npartitions=2))
+        df = ddf.compute()
+
+        assert not df.empty
+        assert {"PLATFORM_NUMBER", "CYCLE_NUMBER", "JULD", "PRES",
+                "TEMP", "PSAL"}.issubset(df.columns)
+        assert not any(column.startswith("G2") for column in df.columns)
+        assert df["JULD"].notna().all()
+
+        assert (df["CYCLE_NUMBER"] >= 1).all()
+
+    def test_converter_glodap_v3_qc_filtering(self):
+        """Test that GLODAP QC flags retain only values flagged 0 or 2."""
+        converter = ConverterGLODAP(db_type="BGC")
+        source = pd.read_csv(
+            converter.input_path / "demo_GLODAP.csv",
+            nrows=100,
+        ).convert_dtypes(dtype_backend="pyarrow")
+        df = converter.standardize_data(
+            dd.from_pandas(source, npartitions=2)
+        ).compute()
+
+        for value, flag in [("PSAL", "PSAL_QC"), ("DOXY", "DOXY_QC"),
+                            ("NITRATE", "NITRATE_QC")]:
+            valid = df[flag].notna()
+            assert df.loc[valid, flag].isin([0, 2]).all()
+            assert not (df.loc[valid, value] == -9999).any()
+
+    def test_converter_argoqc_read_pq_dtypes_phy(self):
+        """
+        Test that the data types of the columns in the ARGO QC dataframe are as expected
+        """
+        converterPHY = ConverterArgoQC(db_type='phy')
+        ddf = converterPHY.read_pq()
+        assert not ddf.head().empty
+
+        assert ddf.dtypes["PLATFORM_NUMBER"] == "int64[pyarrow]"#pd.Int64Dtype()
+        isinstance(ddf.dtypes["DATA_MODE"], pd.CategoricalDtype)
+        assert ddf.dtypes["LATITUDE"] == "float64[pyarrow]"#pd.Float64Dtype()
+        assert ddf.dtypes["LONGITUDE"] == "float64[pyarrow]"#pd.Float64Dtype()
+        assert ddf.dtypes["JULD"] == "timestamp[ns][pyarrow]"#np.dtype('datetime64[ns]')
+        assert ddf.dtypes["PRES"] == "float32[pyarrow]"#pd.Float32Dtype()
+        assert ddf.dtypes["PRES_QC"] == "uint8[pyarrow]"#pd.UInt8Dtype()
+        assert ddf.dtypes["PRES_ADJUSTED_ERROR"] == "float32[pyarrow]"#pd.Float32Dtype()
+        assert ddf.dtypes["TEMP"] == "float32[pyarrow]"#pd.Float32Dtype()
+        assert ddf.dtypes["TEMP_QC"] == "uint8[pyarrow]"#pd.UInt8Dtype()
+        assert ddf.dtypes["TEMP_ADJUSTED_ERROR"] == "float32[pyarrow]"#pd.Float32Dtype()
+        assert ddf.dtypes["PSAL"] == "float32[pyarrow]"#pd.Float32Dtype()
+        assert ddf.dtypes["PSAL_QC"] == "uint8[pyarrow]"#pd.UInt8Dtype()
+        assert ddf.dtypes["PSAL_ADJUSTED_ERROR"] == "float32[pyarrow]"#pd.Float32Dtype()
+
+    def test_converter_argoqc_filters_bgc(self):
+        """
+        Test that the qc filters are properly generated for the ARGO QC dataframe 
+        """
+        converterBGC = ConverterArgoQC(db_type='bgc')
+        filters, param_basenames = converterBGC.generate_qc_schema_filters()
+
+        # filters must be a list of lists of two tuples with three items each
+        assert isinstance(filters, list)
+        for f in filters:
+            assert isinstance(f, list)
+            assert len(f) == 2
+            for item in f:
+                assert isinstance(item, tuple)
+                assert len(item) == 3
+
+        pprint("filters:")
+        pprint(filters)
+
+    def test_converter_argoqc_read_pq_dtypes_bgc(self):
+        """
+        Test that the data types of the columns in the ARGO QC dataframe are as expected
+        """
+        converterBGC = ConverterArgoQC(db_type='bgc')
+        ddf = converterBGC.read_pq()
+        print(ddf.head())
+        assert not ddf.head().empty
+
+        for var in db_params.params["CROCOLAKE_BGC_QC"]:
+            if var in ddf.columns:
+                print(var)
+                if var in ["PLATFORM_NUMBER","CYCLE_NUMBER"]:
+                    assert ddf.dtypes[var] == "int64[pyarrow]"
+                elif var in ["JULD","DATE_UPDATE"]:
+                    assert ddf.dtypes[var] == "timestamp[ns][pyarrow]"
+                elif var in ["LATITUDE","LONGITUDE"]:
+                    assert ddf.dtypes[var] == "float64[pyarrow]"
+                elif "DATA_MODE" in var:
+                    assert isinstance(ddf.dtypes[var], pd.CategoricalDtype)
+                elif "QC" in var:
+                    assert ddf.dtypes[var] == "uint8[pyarrow]"
+                    if (var[:-2]+"ADJUSTED_QC" in ddf.columns):
+                        print(var[:-2]+"ADJUSTED_QC")
+                        assert ddf.dtypes[var[:-2]+"ADJUSTED_QC"] == "uint8[pyarrow]"
+                else:
+                    assert ddf.dtypes[var] == "float32[pyarrow]"
+            elif ("ERROR" in var) and (var[:-5]+"ADJUSTED_ERROR" in ddf.columns):
+                print(var[:-5]+"ADJUSTED_ERROR")
+                assert ddf.dtypes[var[:-5]+"ADJUSTED_ERROR"] == "float32[pyarrow]"
+            else:
+                print(f"Variable {var} not in dataframe.")
+
+
+    def test_converter_argoqc_update_cols_phy(self):
+        """
+        Test that the data types of the columns in the ARGO QC dataframe are as expected
+        """
+        converterPHY = ConverterArgoQC(db_type='phy')
+        ddf = converterPHY.read_pq()
+        ddf = converterPHY.update_cols(ddf)
+
+        assert ddf.dtypes["PLATFORM_NUMBER"] == "int64[pyarrow]"#pd.Int64Dtype()
+        assert isinstance(ddf.dtypes["DATA_MODE"], pd.CategoricalDtype)#pd.StringDtype("pyarrow") # == "string[pyarrow]"
+        assert ddf.dtypes["LATITUDE"] == "float64[pyarrow]"#pd.Float64Dtype()
+        assert ddf.dtypes["LONGITUDE"] == "float64[pyarrow]"#pd.Float64Dtype()
+        assert ddf.dtypes["JULD"] == "timestamp[ns][pyarrow]"#np.dtype("datetime64[ns]")
+        assert ddf.dtypes["DATE_UPDATE"] == "timestamp[ns][pyarrow]"#np.dtype("datetime64[ns]")
+        assert ddf.dtypes["PRES"] == "float32[pyarrow]"#pd.Float32Dtype()
+        assert ddf.dtypes["PRES_QC"] == "uint8[pyarrow]"#pd.UInt8Dtype()
+        assert ddf.dtypes["PRES_ERROR"] == "float32[pyarrow]"#pd.Float32Dtype()
+        assert ddf.dtypes["TEMP"] == "float32[pyarrow]"#pd.Float32Dtype()
+        assert ddf.dtypes["TEMP_QC"] == "uint8[pyarrow]"#pd.UInt8Dtype()
+        assert ddf.dtypes["TEMP_ERROR"] == "float32[pyarrow]"#pd.Float32Dtype()
+        assert ddf.dtypes["PSAL"] == "float32[pyarrow]"#pd.Float32Dtype()
+        assert ddf.dtypes["PSAL_QC"] == "uint8[pyarrow]"#pd.UInt8Dtype()
+        assert ddf.dtypes["PSAL_ERROR"] == "float32[pyarrow]"#pd.Float32Dtype()
+        assert isinstance(ddf.dtypes["DB_NAME"], pd.CategoricalDtype)
+
+        assert "PRES_ADJUSTED" not in ddf.columns
+        assert "TEMP_ADJUSTED" not in ddf.columns
+        assert "PSAL_ADJUSTED" not in ddf.columns
+        assert "PRES_ERROR_ADJUSTED" not in ddf.columns
+        assert "TEMP_ERROR_ADJUSTED" not in ddf.columns
+        assert "PSAL_ERROR_ADJUSTED" not in ddf.columns
+
+    def test_converter_argoqc_update_cols_phy_dummy(self):
+        """
+        Test that the original data is correctly re-casted in the QC format
+        """
+
+        # the resulting QCed df should have temperature values of 20 or 25
+        dummy_data = {
+            "PLATFORM_NUMBER": [1000001, 1000002, 1000003, 1000004, 1000005, 1000006],
+            "LATITUDE": [35.0, 36.0, 37.0, 38.0, 39.0, 40.0],
+            "LONGITUDE": [-70.0, -71.0, -72.0, -73.0, -74.0, -75.0],
+            "POSITION_QC": [1, 1, 1, 1, 1, 1],
+            "JULD": pd.to_datetime(
+                ["2021-01-01", "2021-01-02", "2021-01-03", "2021-01-04", "2021-01-05", "2021-01-06"]
+            ),
+            "JULD_QC": [1, 1, 1, 1, 1, 1],
+            "TEMP": [20.0, 20.0, 11.0, 11.0, 11.0, 11.0],
+            "TEMP_QC": [1, 2, 3, 1, 1, 1],
+            "TEMP_ADJUSTED": [pd.NA, pd.NA, pd.NA, 25.0, 25.0, 16.0],
+            "TEMP_ADJUSTED_QC": [pd.NA, pd.NA, pd.NA, 1, 2, 3],
+            "TEMP_ADJUSTED_ERROR": [pd.NA, pd.NA, pd.NA, 0.02, 0.02, 0.02],
+            "PSAL": [2.0, 2.0, 1.0, 1.0, 1.0, 1.0],
+            "PSAL_QC": [1, 2, 3, 1, 1, 1],
+            "PSAL_ADJUSTED": [pd.NA, pd.NA, pd.NA, 5.0, 5.0, 6.0],
+            "PSAL_ADJUSTED_QC": [pd.NA, pd.NA, pd.NA, 1, 2, 3],
+            "PSAL_ADJUSTED_ERROR": [pd.NA, pd.NA, pd.NA, 0.03, 0.03, 0.03],
+            "PRES": [200.0, 200.0, 110.0, 110.0, 110.0, 110.0],
+            "PRES_QC": [1, 2, 3, 1, 1, 1],
+            "PRES_ADJUSTED": [pd.NA, pd.NA, pd.NA, 250.0, 250.0, 260.0],
+            "PRES_ADJUSTED_QC": [pd.NA, pd.NA, pd.NA, 1, 2, 3],
+            "PRES_ADJUSTED_ERROR": [pd.NA, pd.NA, pd.NA, 0.05, 0.05, 0.05],
+            "DATA_MODE": ["R", "R", "R", "D", "D", "D"],
+        }
+
+        dummy_df = pd.DataFrame(dummy_data).convert_dtypes(dtype_backend='pyarrow')
+        for param in dummy_df.columns:
+            if param not in ["JULD", "DATA_MODE", "PLATFORM_NUMBER"] and "QC" not in param:
+                dummy_df[ param ] = dummy_df[ param ].astype("float32[pyarrow]")
+            elif "QC" in param:
+                dummy_df[ param ] = dummy_df[ param ].astype("int64[pyarrow]")
+        print("Dummy data:")
+        print(f"memory usage: {dummy_df.memory_usage().sum()} bytes")
+        with pd.option_context('display.max_columns', None, 'display.width', terminal_width):
+            print(dummy_df)
+
+        sol_data = {
+            "PLATFORM_NUMBER": [1000001, 1000002, 1000004, 1000005],
+            "LATITUDE": [35.0, 36.0, 38.0, 39.0],
+            "LONGITUDE": [-70.0, -71.0, -73.0, -74.0],
+            "POSITION_QC": [1, 1, 1, 1],
+            "JULD": pd.to_datetime(
+                ["2021-01-01", "2021-01-02", "2021-01-04", "2021-01-05"]
+            ),
+            "JULD_QC": [1, 1, 1, 1],
+            "TEMP": [20.0, 20.0, 25.0, 25.0],
+            "TEMP_QC": [1, 2, 1, 2],
+            "PSAL": [2.0, 2.0, 5.0, 5.0],
+            "PSAL_QC": [1, 2, 1, 2],
+            "PRES": [200.0, 200.0, 250.0, 250.0],
+            "PRES_QC": [1, 2, 1, 2],
+            "DATA_MODE": ["R", "R", "D", "D"],
+            "PRES_ERROR": [pd.NA, pd.NA, 0.05, 0.05],
+            "TEMP_ERROR": [pd.NA, pd.NA, 0.02, 0.02],
+            "PSAL_ERROR": [pd.NA, pd.NA, 0.03, 0.03],
+            "DB_NAME": ["ARGO", "ARGO", "ARGO", "ARGO"]
+        }
+        sol_df = pd.DataFrame(sol_data).convert_dtypes(dtype_backend='pyarrow')
+        for param in sol_df.columns:
+            if param not in ["JULD", "DATA_MODE", "PLATFORM_NUMBER", "DB_NAME"] and "QC" not in param:
+                sol_df[ param ] = sol_df[ param ].astype("float32[pyarrow]")
+            elif param in ["ADJUSTED_QC","POSITION_QC","JULD_QC"]:
+                sol_df[ param ] = sol_df[ param ].astype("int64[pyarrow]")
+            elif "QC" in param:
+                sol_df[ param ] = sol_df[ param ].astype("uint8[pyarrow]")
+            elif param == "DB_NAME":
+                categories = pd.Series(db_names.databases, dtype='string[pyarrow]')
+                sol_df[ param ] = sol_df[ param ].astype(pd.CategoricalDtype(categories=categories, ordered=False))
+            elif "DATA_MODE" in param:
+                categories = pd.Series(["R", "A", "D"], dtype='string[pyarrow]')
+                sol_df[ param ] = sol_df[ param ].astype(pd.CategoricalDtype(categories=categories, ordered=False))
+        print("Solution data:")
+        print(f"memory usage: {sol_df.memory_usage().sum()} bytes")
+        with pd.option_context('display.max_columns', None, 'display.width', terminal_width):
+            print(sol_df)
+
+        converterPHY = ConverterArgoQC(db_type='phy')
+        filters, param_basenames = converterPHY.generate_qc_schema_filters()
+        print("param_basenames:")
+        print(param_basenames)
+        converterPHY.param_basenames = param_basenames
+        ddf = converterPHY.update_cols(dd.from_pandas(dummy_df))
+
+        ddf = ddf.compute()
+        print("Resulting data:")
+        print(f"memory usage: {ddf.memory_usage().sum()} bytes")
+        with pd.option_context('display.max_columns', None, 'display.width', terminal_width):
+            print(ddf)
+
+        pd.testing.assert_frame_equal(ddf, sol_df)
+
+    def test_converter_argoqc_keep_best_values_phy(self):
+        """
+        Test that the original data is correctly re-casted in the QC format
+        """
+
+        # the resulting QCed df should have temperature values of 20 or 25
+        dummy_data = {
+            "PLATFORM_NUMBER": [1000001, 1000002, 1000003, 1000004, 1000005, 1000006],
+            "LATITUDE": [35.1, 36.1, 37.1, 38.1, 39.1, 40.1],
+            "LONGITUDE": [-70.1, -71.1, -72.1, -73.1, -74.1, -75.1],
+            "JULD": pd.to_datetime(
+                ["2021-01-01", "2021-01-02", "2021-01-03", "2021-01-04", "2021-01-05", "2021-01-06"]
+            ),
+            "TEMP": [20.1, 20.1, 11.1, 11.1, 11.1, 11.1],
+            "TEMP_QC": [1, 2, 3, 1, 1, 1],
+            "TEMP_ADJUSTED": [pd.NA, pd.NA, pd.NA, 25.1, 25.1, 16.1],
+            "TEMP_ADJUSTED_QC": [pd.NA, pd.NA, pd.NA, 1, 2, 3],
+            "TEMP_ADJUSTED_ERROR": [pd.NA, pd.NA, pd.NA, 0.02, 0.02, 0.02],
+            "PSAL": [2.1, 2.1, 1.1, 1.1, 1.1, 1.1],
+            "PSAL_QC": [1, 2, 3, 1, 1, 1],
+            "PSAL_ADJUSTED": [pd.NA, pd.NA, pd.NA, 5.1, 5.1, 6.1],
+            "PSAL_ADJUSTED_QC": [pd.NA, pd.NA, pd.NA, 1, 2, 3],
+            "PSAL_ADJUSTED_ERROR": [pd.NA, pd.NA, pd.NA, 0.03, 0.03, 0.03],
+            "PRES": [2.1, 2.1, 110.1, 110.1, 110.1, 110.1],
+            "PRES_QC": [1, 2, 3, 1, 1, 1],
+            "PRES_ADJUSTED": [pd.NA, pd.NA, pd.NA, 25.1, 25.1, 26.1],
+            "PRES_ADJUSTED_QC": [pd.NA, pd.NA, pd.NA, 1, 2, 3],
+            "PRES_ADJUSTED_ERROR": [pd.NA, pd.NA, pd.NA, 0.05, 0.05, 0.05],
+            "DATA_MODE": ["R", "R", "R", "D", "D", "D"],
+        }
+
+        dummy_df = pd.DataFrame(dummy_data).convert_dtypes(dtype_backend='pyarrow')
+        for param in dummy_df.columns:
+            if param not in ["JULD", "DATA_MODE", "PLATFORM_NUMBER"] and "QC" not in param:
+                dummy_df[ param ] = dummy_df[ param ].astype("float32[pyarrow]")
+            elif "QC" in param:
+                dummy_df[ param ] = dummy_df[ param ].astype("int64[pyarrow]")
+        print("Dummy data:")
+        print(f"memory usage: {dummy_df.memory_usage().sum()} bytes")
+        with pd.option_context('display.max_columns', None, 'display.width', terminal_width):
+            print(dummy_df)
+
+        sol_data = {
+            "PLATFORM_NUMBER": [1000001, 1000002, 1000003, 1000004, 1000005, 1000006],
+            "LATITUDE": [35.1, 36.1, 37.1, 38.1, 39.1, 40.1],
+            "LONGITUDE": [-70.1, -71.1, -72.1, -73.1, -74.1, -75.1],
+            "JULD": pd.to_datetime(
+                ["2021-01-01", "2021-01-02", "2021-01-03", "2021-01-04", "2021-01-05", "2021-01-06"]
+            ),
+            "TEMP": [20.1, 20.1, pd.NA, 25.1, 25.1, pd.NA],
+            "TEMP_QC": [1, 2, pd.NA, 1, 2, pd.NA],
+            "TEMP_ADJUSTED": [pd.NA, pd.NA, pd.NA, 25.1, 25.1, 16.1],
+            "TEMP_ADJUSTED_QC": [pd.NA, pd.NA, pd.NA, 1, 2, 3],
+            "TEMP_ADJUSTED_ERROR": [pd.NA, pd.NA, pd.NA, 0.02, 0.02, 0.02],
+            "PSAL": [2.1, 2.1, pd.NA, 5.1, 5.1, pd.NA],
+            "PSAL_QC": [1, 2, pd.NA, 1, 2, pd.NA],
+            "PSAL_ADJUSTED": [pd.NA, pd.NA, pd.NA, 5.1, 5.1, 6.1],
+            "PSAL_ADJUSTED_QC": [pd.NA, pd.NA, pd.NA, 1, 2, 3],
+            "PSAL_ADJUSTED_ERROR": [pd.NA, pd.NA, pd.NA, 0.03, 0.03, 0.03],
+            "PRES": [2.1, 2.1, pd.NA, 25.1, 25.1, pd.NA],
+            "PRES_QC": [1, 2, pd.NA, 1, 2, pd.NA],
+            "PRES_ADJUSTED": [pd.NA, pd.NA, pd.NA, 25.1, 25.1, 26.1],
+            "PRES_ADJUSTED_QC": [pd.NA, pd.NA, pd.NA, 1, 2, 3],
+            "PRES_ADJUSTED_ERROR": [pd.NA, pd.NA, pd.NA, 0.05, 0.05, 0.05],
+            "DATA_MODE": ["R", "R", "R", "D", "D", "D"],
+            "PRES_ERROR": [pd.NA, pd.NA, pd.NA, 0.05, 0.05, pd.NA],
+            "TEMP_ERROR": [pd.NA, pd.NA, pd.NA, 0.02, 0.02, pd.NA],
+            "PSAL_ERROR": [pd.NA, pd.NA, pd.NA, 0.03, 0.03, pd.NA],
+        }
+        sol_df = pd.DataFrame(sol_data).convert_dtypes(dtype_backend='pyarrow')
+        for param in sol_df.columns:
+            if param not in ["JULD", "DATA_MODE", "PLATFORM_NUMBER"] and "QC" not in param:
+                sol_df[ param ] = sol_df[ param ].astype("float32[pyarrow]")
+            elif "ADJUSTED_QC" in param:
+                sol_df[ param ] = sol_df[ param ].astype("int64[pyarrow]")
+            elif "QC" in param:
+                sol_df[ param ] = sol_df[ param ].astype("uint8[pyarrow]")
+        print("Solution data:")
+        print(f"memory usage: {sol_df.memory_usage().sum()} bytes")
+        with pd.option_context('display.max_columns', None, 'display.width', terminal_width):
+            print(sol_df)
+
+        converterPHY = ConverterArgoQC(db_type="phy")
+        filters, param_basenames = converterPHY.generate_qc_schema_filters()
+        print("param_basenames:")
+        print(param_basenames)
+        converterPHY.param_basenames = param_basenames
+        for param in converterPHY.param_basenames:
+            print('param')
+            print(param)
+
+        # test pandas dataframe
+        df = dummy_df
+        df = converterPHY.keep_best_values(
+            df,
+            converterPHY.param_basenames,
+            converterPHY.db_type
+        )
+
+        #ddf = ddf.compute()
+        print("Resulting data:")
+        print(f"memory usage: {df.memory_usage().sum()} bytes")
+        with pd.option_context('display.max_columns', None, 'display.width', terminal_width):
+            print(df)
+
+        assert df.equals(sol_df)
+
+        # test dask dataframe
+        ddf = dd.from_pandas(dummy_df, npartitions=1)
+        for param in param_basenames:
+            ddf = dd.map_partitions(converterPHY.keep_best_values, ddf, param_basenames, "DATA_MODE")
+        ddf = ddf.compute()
+
+        print("Resulting data:")
+        print(f"memory usage: {ddf.memory_usage().sum()} bytes")
+        with pd.option_context('display.max_columns', None, 'display.width', terminal_width):
+            print(ddf)
+
+        assert ddf.equals(sol_df)
+
+    def test_converter_argoqc_keep_pos_juld_best_values_phy(self):
+        """
+        Test that the original data is correctly re-casted in the QC format
+        """
+
+        # the resulting QCed df should have temperature values of 20 or 25
+        dummy_data = {
+            "PLATFORM_NUMBER": [1000001, 1000002, 1000003, 1000004, 1000005, 1000006],
+            "LATITUDE": [35.1, 36.1, 37.1, -99.99, 39.1, 40.1],
+            "LONGITUDE": [-70.1, -71.1, -72.1, -999.99, -74.1, -75.1],
+            "POSITION_QC": [1, 2, 2, 9, 1, 1],
+            "JULD": pd.to_datetime(
+                ["2021-01-01", "1920-12-31", "2021-01-03", "2021-01-04", "2021-01-05", "2021-01-06"]
+            ),
+            "JULD_QC": [1, 3, 1, 1, 1, 1],
+            "TEMP": [20.1, 20.1, 20.1, 20.1, 20.1, 20.1],
+            "TEMP_QC": [1, 2, 2, 1, 1, 1],
+            "TEMP_ERROR": [0.02, 0.02, 0.02, 0.02, 0.02, 0.02],
+            "PSAL": [2.1, 2.1, 2.1, 2.1, 2.1, 2.1],
+            "PSAL_QC": [1, 2, 2, 1, 1, 1],
+            "PSAL_ERROR": [0.03, 0.03, 0.03, 0.03, 0.03, 0.03],
+            "PRES": [2.1, 2.1, 2.1, 2.1, 2.1, 2.1],
+            "PRES_QC": [1, 2, 2, 1, 1, 1],
+            "PRES_ERROR": [0.05, 0.05, 0.05, 0.05, 0.05, 0.05],
+            "DATA_MODE": ["R", "R", "R", "D", "D", "D"],
+        }
+
+        dummy_df = pd.DataFrame(dummy_data).convert_dtypes(dtype_backend='pyarrow')
+        for param in dummy_df.columns:
+            if param not in ["JULD", "DATA_MODE", "PLATFORM_NUMBER"] and "QC" not in param:
+                dummy_df[ param ] = dummy_df[ param ].astype("float32[pyarrow]")
+            elif "QC" in param:
+                dummy_df[ param ] = dummy_df[ param ].astype("uint8[pyarrow]")
+        print("Dummy data:")
+        print(f"memory usage: {dummy_df.memory_usage().sum()} bytes")
+        with pd.option_context('display.max_columns', None, 'display.width', terminal_width):
+            print(dummy_df)
+
+        sol_data = {
+            "PLATFORM_NUMBER": [1000001, 1000002, 1000003, 1000004, 1000005, 1000006],
+            "LATITUDE": [35.1, 36.1, 37.1, -99.99, 39.1, 40.1],
+            "LONGITUDE": [-70.1, -71.1, -72.1, -999.99, -74.1, -75.1],
+            "POSITION_QC": [1, 2, 2, 9, 1, 1],
+            "JULD": pd.to_datetime(
+                ["2021-01-01", "1920-12-31", "2021-01-03", "2021-01-04", "2021-01-05", "2021-01-06"]
+            ),
+            "JULD_QC": [1, 3, 1, 1, 1, 1],
+            "TEMP": [20.1, pd.NA, 20.1, pd.NA, 20.1, 20.1],
+            "TEMP_QC": [1, 2, 2, 1, 1, 1],
+            "TEMP_ERROR": [0.02, 0.02, 0.02, 0.02, 0.02, 0.02],
+            "PSAL": [2.1, pd.NA, 2.1, pd.NA, 2.1, 2.1],
+            "PSAL_QC": [1, 2, 2, 1, 1, 1],
+            "PSAL_ERROR": [0.03, 0.03, 0.03, 0.03, 0.03, 0.03],
+            "PRES": [2.1, pd.NA, 2.1, pd.NA, 2.1, 2.1],
+            "PRES_QC": [1, 2, 2, 1, 1, 1],
+            "PRES_ERROR": [0.05, 0.05, 0.05, 0.05, 0.05, 0.05],
+            "DATA_MODE": ["R", "R", "R", "D", "D", "D"],
+        }
+        sol_df = pd.DataFrame(sol_data).convert_dtypes(dtype_backend='pyarrow')
+        for param in sol_df.columns:
+            if param not in ["JULD", "DATA_MODE", "PLATFORM_NUMBER"] and "QC" not in param:
+                sol_df[ param ] = sol_df[ param ].astype("float32[pyarrow]")
+            elif "QC" in param:
+                sol_df[ param ] = sol_df[ param ].astype("uint8[pyarrow]")
+        print("Solution data:")
+        print(f"memory usage: {sol_df.memory_usage().sum()} bytes")
+        with pd.option_context('display.max_columns', None, 'display.width', terminal_width):
+            print(sol_df)
+
+        converterPHY = ConverterArgoQC(
+            db_type="phy",
+        )
+        filters, param_basenames = converterPHY.generate_qc_schema_filters()
+        print("param_basenames:")
+        print(param_basenames)
+        converterPHY.param_basenames = param_basenames
+
+        # test pandas dataframe
+        df = dummy_df
+        df = converterPHY.keep_pos_juld_best_values(df, param_basenames)
+
+        # check columns names
+        print("Checking column names")
+        pd.testing.assert_frame_equal(
+            df,
+            sol_df,
+            check_dtype=False,
+            check_index_type=False,
+            check_column_type=False,
+            check_frame_type=False,
+            check_names=True,
+            check_exact=False
+        )
+
+        # check df dtype
+        print("Checking df dtype")
+        pd.testing.assert_frame_equal(
+            df,
+            sol_df,
+            check_dtype=True,
+            check_index_type=False,
+            check_column_type=False,
+            check_frame_type=False,
+            check_names=True,
+            check_exact=False
+        )
+
+        # check columns dtypes
+        print("Checking columns dtypes")
+        pd.testing.assert_frame_equal(
+            df,
+            sol_df,
+            check_dtype=True,
+            check_index_type=False,
+            check_column_type=True,
+            check_frame_type=False,
+            check_names=True,
+            check_exact=False
+        )
+
+        print("Resulting data (pandas):")
+        print(f"memory usage: {df.memory_usage().sum()} bytes")
+        with pd.option_context('display.max_columns', None, 'display.width', terminal_width):
+            print(df)
+
+        assert df.equals(sol_df)
+
+        # test dask dataframe
+        ddf = dd.from_pandas(dummy_df, npartitions=1)
+        ddf = dd.map_partitions(converterPHY.keep_pos_juld_best_values, ddf, param_basenames)
+        ddf = ddf.compute()
+
+        print("Resulting data (dask):")
+        print(f"memory usage: {ddf.memory_usage().sum()} bytes")
+        with pd.option_context('display.max_columns', None, 'display.width', terminal_width):
+            print(ddf)
+
+        assert ddf.equals(sol_df)
+
+    def test_converter_argoqc_remove_all_NAs(self):
+        """
+        Test that the rows where all measurements are NA are removed
+        """
+
+        dummy_data = {
+            "PLATFORM_NUMBER": [1000001, 1000002, 1000003, 1000004, 1000005, 1000006],
+            "LATITUDE": [35.1, 36.1, 37.1, 38.1, 39.1, 40.1],
+            "LONGITUDE": [-70.1, -71.1, -72.1, -73.1, -74.1, -75.1],
+            "JULD": pd.to_datetime(
+                ["2021-01-01", "2021-01-02", "2021-01-03", "2021-01-04", "2021-01-05", "2021-01-06"]
+            ),
+            "TEMP": [20.1, 20.1, pd.NA, 25.1, 25.1, pd.NA],
+            "TEMP_QC": [1, 2, 9, 1, 2, 9],
+            "TEMP_ERROR": [pd.NA, pd.NA, pd.NA, 0.02, 0.02, 0.02],
+            "PSAL": [2.1, 2.1, pd.NA, 5.1, 5.1, pd.NA],
+            "PSAL_QC": [1, 2, 9, 1, 2, 9],
+            "PSAL_ERROR": [pd.NA, pd.NA, pd.NA, 0.03, 0.03, 0.03],
+            "PRES": [200.1, 200.1, pd.NA, 250.1, 250.1, pd.NA],
+            "PRES_QC": [1, 2, 9, 1, 2, 9],
+            "PRES_ERROR": [pd.NA, pd.NA, pd.NA, 0.05, 0.05, 0.05],
+            "DATA_MODE": ["R", "R", "R", "D", "D", "D"],
+            "DB_NAME": ["ARGO", "ARGO", "ARGO", "ARGO", "ARGO", "ARGO"]
+        }
+
+        dummy_df = pd.DataFrame(dummy_data).convert_dtypes(dtype_backend='pyarrow')
+        print("Dummy data:")
+        print(f"memory usage: {dummy_df.memory_usage().sum()} bytes")
+        with pd.option_context('display.max_columns', None):
+            print(dummy_df)
+
+        sol_data = {
+            "PLATFORM_NUMBER": [1000001, 1000002, 1000004, 1000005],
+            "LATITUDE": [35.1, 36.1, 38.1, 39.1],
+            "LONGITUDE": [-70.1, -71.1, -73.1, -74.1],
+            "JULD": pd.to_datetime(
+                ["2021-01-01", "2021-01-02", "2021-01-04", "2021-01-05"]
+            ),
+            "TEMP": [20.1, 20.1, 25.1, 25.1],
+            "TEMP_QC": [1, 2, 1, 2],
+            "TEMP_ERROR": [pd.NA, pd.NA, 0.02, 0.02],
+            "PSAL": [2.1, 2.1, 5.1, 5.1],
+            "PSAL_QC": [1, 2, 1, 2],
+            "PSAL_ERROR": [pd.NA, pd.NA, 0.03, 0.03],
+            "PRES": [200.1, 200.1, 250.1, 250.1],
+            "PRES_QC": [1, 2, 1, 2],
+            "PRES_ERROR": [pd.NA, pd.NA, 0.05, 0.05],
+            "DATA_MODE": ["R", "R", "D", "D"],
+            "DB_NAME": ["ARGO", "ARGO", "ARGO", "ARGO"]
+        }
+        sol_df = pd.DataFrame(sol_data).convert_dtypes(dtype_backend='pyarrow')
+        print("Solution data:")
+        print(f"memory usage: {sol_df.memory_usage().sum()} bytes")
+        with pd.option_context('display.max_columns', None):
+            print(sol_df)
+
+        converterPHY = ConverterArgoQC(
+            db_type="PHY",
+        )
+        filters, param_basenames = converterPHY.generate_qc_schema_filters()
+        print("param_basenames:")
+        print(param_basenames)
+
+        # testing pandas df
+        df = converterPHY.remove_all_NAs(dummy_df, param_basenames)
+        print("Resulting df:")
+        print(f"memory usage: {df.memory_usage().sum()} bytes")
+        with pd.option_context('display.max_columns', None):
+            print(df)
+
+        assert df.equals(sol_df)
+
+        # testing dask df
+        ddf = dd.map_partitions(converterPHY.remove_all_NAs, dd.from_pandas(dummy_df), param_basenames)
+        ddf = ddf.compute().convert_dtypes(dtype_backend='pyarrow')
+        print("Resulting ddf:")
+        print(f"memory usage: {df.memory_usage().sum()} bytes")
+        with pd.option_context('display.max_columns', None):
+            print(df)
+
+        assert ddf.equals(sol_df)
+
+    def test_converter_argoqc_update_cols_bgc(self):
+        """
+        Test that the data types of the columns in the ARGO QC dataframe are as expected
+        """
+        converterBGC = ConverterArgoQC(
+            db_type="BGC",
+        )
+
+        fname = random.choice(glob.glob(str(converterBGC.input_path / '*.parquet')))
+        ddf = converterBGC.read_pq(filename=fname)
+        ddf = converterBGC.update_cols(ddf)
+
+        for var in db_params.params["CROCOLAKE_BGC_QC"]:
+            if var in ddf.columns:
+                print(var)
+                if var in ["PLATFORM_NUMBER","CYCLE_NUMBER"]:
+                    assert ddf.dtypes[var] == "int64[pyarrow]"
+                elif var in ["JULD","DATE_UPDATE"]:
+                    assert ddf.dtypes[var] == "timestamp[ns][pyarrow]"
+                elif var in ["LATITUDE","LONGITUDE"]:
+                    assert ddf.dtypes[var] == "float64[pyarrow]"
+                elif ("DATA_MODE" in var) or (var=="DB_NAME"):
+                    assert isinstance(ddf.dtypes[var], pd.CategoricalDtype)
+                elif "QC" in var:
+                    assert ddf.dtypes[var] == "uint8[pyarrow]"
+                    assert var[:-2]+"ADJUSTED_QC" not in ddf.columns
+                else:
+                    assert ddf.dtypes[var] == "float32[pyarrow]"
+                if "ERROR" in var:
+                    assert ddf.dtypes[var] == "float32[pyarrow]"
+            elif "ERROR" in var:
+                assert var[:-5]+"ADJUSTED_ERROR" not in ddf.columns
+            else:
+                print(f"Variable {var} not in dataframe.")
+
+    def test_converter_argoqc_convert_phy(self, tmp_path):
+        """Test that no error is raised during execution of convert() function
+        and that a parquet output is generated. This does not test the content
+        of the parquet output.
+        """
+
+        converterPHY = ConverterArgoQC(
+            db_type="PHY",
+        )
+        converterPHY.outdir_pq = tmp_path / "parquet"
+        converterPHY.tmp_path = tmp_path / "tmp"
+
+        pq_files = glob.glob(str(converterPHY.input_path / '*.parquet'))
+        assert len(pq_files) > 0
+        random_file = random.choice(pq_files)
+
+        ddf = converterPHY.read_to_df(random_file)
+        assert not ddf.head().empty
+
+        converterPHY.convert(random_file)
+
+    def test_converter_argoqc_convert_bgc(self, tmp_path):
+        """Test that no error is raised during execution of convert() function
+        and that a parquet output is generated. This does not test the content
+        of the parquet output.
+        """
+        converterBGC = ConverterArgoQC(
+            db_type="BGC",
+        )
+        converterBGC.outdir_pq = tmp_path / "parquet"
+        converterBGC.tmp_path = tmp_path / "tmp"
+
+        pq_files = glob.glob(str(converterBGC.input_path / '*.parquet'))
+        assert len(pq_files) > 0
+        random_file = random.choice(pq_files)
+
+        ddf = converterBGC.read_to_df(random_file)
+        assert not ddf.head().empty
+
+        converterBGC.convert(random_file)
+
+    def test_converter_add_derived_variables(self):
+        """Test that add_derived_variables() executes"""
+        data = {
+            'LATITUDE': [35.00, 36.25],
+            'LONGITUDE': [-70.00, -70.00],
+            'PSAL': [1.1, 1.1],
+            'PRES': [2.1, 1.9],
+            'TEMP': [20.2, 22.9]
+        }
+        pdf = pd.DataFrame(data)
+        ddf = dd.from_pandas(pdf, npartitions=2)
+
+        # create converter simply to access function to test
+
+        converterPHY = ConverterArgoQC(
+            db_type="PHY",
+        )
+
+        with pytest.warns(UserWarning):
+            ddf = converterPHY.add_derived_variables(ddf)
+
+        for var in ["ABS_SAL_COMPUTED","CONSERVATIVE_TEMP_COMPUTED","SIGMA1_COMPUTED"]:
+            assert var in ddf.columns
+            assert ddf.dtypes[var] == "float32[pyarrow]"
+
+        print(ddf.compute())
+
+    @staticmethod
+    def _assert_within_bounds(result, var, lower, upper, unit):
+        """Assert result[var] stays within [lower, upper]; print and name the
+        failing rows first if not
+        """
+        out_of_bounds = result[(result[var] < lower) | (result[var] > upper)]
+        if not out_of_bounds.empty:
+            print(f"{var} out of bounds [{lower}, {upper}] {unit}:")
+            print(out_of_bounds[["LATITUDE", "LONGITUDE", "PSAL", "PRES", "TEMP", var]])
+        assert out_of_bounds.empty, (
+            f"{var} outside physically admissible bounds [{lower}, {upper}] {unit} "
+            f"for {len(out_of_bounds)} row(s) (see printed output above)"
+        )
+
+    def test_converter_abs_sal_computed(self):
+        """Check that ABS_SAL_COMPUTED (TEOS-10 Absolute Salinity, g/kg) is
+        within physically admissible bounds.
+        """
+        pdf = _plausible_extreme_profiles()
+        ddf = dd.from_pandas(pdf, npartitions=2)
+
+        # create converter simply to access function to test
+        converterPHY = ConverterArgoQC(
+            db_type="PHY",
+        )
+
+        with pytest.warns(UserWarning):
+            ddf = converterPHY.add_derived_variables(ddf)
+
+        var = "ABS_SAL_COMPUTED"
+        assert var in ddf.columns
+        result = ddf.compute()
+
+        self._assert_within_bounds(result, var, lower=0.0, upper=50.0, unit="g/kg")
+
+    def test_converter_conservative_temp_computed(self):
+        """Check that CONSERVATIVE_TEMP_COMPUTED (degrees C) is within
+        physically admissible bounds.
+        """
+        pdf = _plausible_extreme_profiles()
+        ddf = dd.from_pandas(pdf, npartitions=2)
+
+        converterPHY = ConverterArgoQC(
+            db_type="PHY",
+        )
+
+        with pytest.warns(UserWarning):
+            ddf = converterPHY.add_derived_variables(ddf)
+
+        var = "CONSERVATIVE_TEMP_COMPUTED"
+        assert var in ddf.columns
+        result = ddf.compute()
+
+        self._assert_within_bounds(result, var, lower=-3.0, upper=40.0, unit="degC")
+
+    def test_converter_sigma1_computed(self):
+        """Check that SIGMA1_COMPUTED (potential density anomaly
+        referenced to 1000 dbar, kg/m^3) is within physically
+        admissible bounds.
+        """
+        pdf = _plausible_extreme_profiles()
+        ddf = dd.from_pandas(pdf, npartitions=2)
+
+        converterPHY = ConverterArgoQC(
+            db_type="PHY",
+        )
+
+        with pytest.warns(UserWarning):
+            ddf = converterPHY.add_derived_variables(ddf)
+
+        var = "SIGMA1_COMPUTED"
+        assert var in ddf.columns
+        result = ddf.compute()
+
+        self._assert_within_bounds(result, var, lower=0.0, upper=35.0, unit="kg/m^3")
+
+
+    @pytest.mark.skip(reason="disabled pending official support")
+    def test_converter_cpr_read_to_df(self):
+        """
+        Test that the CPR CSV file is correctly read into a pandas DataFrame.
+        """
+        converter = ConverterCPR(
+            db="CPR",
+            db_type="BGC",
+            input_path=cpr_path,
+            outdir_pq=outdir_cpr_pqt,
+            outdir_schema="./schemas/CPR/",
+            fname_pq="test_cpr"
+        )
+
+        df = converter.read_to_df(filename="765141_v5_cpr-plankton-abundance.csv")
+
+        # Check that the DataFrame is not empty
+        assert not df.empty
+
+        # Check that required columns are present (after renaming)
+        required_columns = ["PLATFORM_NUMBER", "LATITUDE", "LONGITUDE", "JULD"]
+        for col in required_columns:
+            assert col in df.columns
+
+    @pytest.mark.skip(reason="disabled pending official support")
+    def test_converter_cpr_standardize_data(self):
+        """
+        Test that the CPR DataFrame is correctly standardized.
+        """
+        converter = ConverterCPR(
+            db="CPR",
+            db_type="BGC",
+            input_path=cpr_path,
+            outdir_pq=outdir_cpr_pqt,
+            outdir_schema="./schemas/CPR/",
+            fname_pq="test_cpr"
+        )
+
+        sample_data = {
+            "SampleId": ["100DA-13", "100DA-14"],
+            "Latitude": [48.66, 49.66],
+            "Longitude": [-25.1733, -26.1733],
+            "MidPoint_Date_UTC": ["1972-10-24T06:05Z", "1972-10-25T06:05Z"],
+            "Year": [1972, 1972],
+            "Month": [10, 10],
+            "Day": [24, 25],
+            "Hour": [6, 6]
+        }
+        df = pd.DataFrame(sample_data)
+
+        # Standardize the DataFrame
+        standardized_df = converter.standardize_data(df)
+
+        # Check that the DataFrame is not empty
+        assert not standardized_df.empty
+
+        # Check that columns are renamed correctly
+        assert "PLATFORM_NUMBER" in standardized_df.columns
+        assert "LATITUDE" in standardized_df.columns
+        assert "LONGITUDE" in standardized_df.columns
+        assert "JULD" in standardized_df.columns
+
+        # Check that the date column is converted to datetime
+        assert str(standardized_df["JULD"].dtype) == "timestamp[ns][pyarrow]"
+
+    @pytest.mark.skip(reason="disabled pending official support")
+    def test_converter_cpr_convert(self):
+        """
+        Test that the CPR CSV file is correctly converted to Parquet format.
+        """
+        # Ensure the output directory exists
+        os.makedirs(outdir_cpr_pqt, exist_ok=True)
+
+        converter = ConverterCPR(
+            db="CPR",
+            db_type="BGC",
+            input_path=cpr_path,
+            outdir_pq=outdir_cpr_pqt,
+            outdir_schema="./schemas/CPR/",
+            fname_pq="test_cpr"
+        )
+
+        # Convert a sample CPR CSV file
+        converter.convert(filenames="765141_v5_cpr-plankton-abundance.csv")  # Pass the filename here
+
+        # Check that the output Parquet file exists
+        output_files = glob.glob(os.path.join(outdir_cpr_pqt, "test_cpr_BGC*.parquet"))
+        assert len(output_files) > 0, "No output Parquet files found"
+
+        # Read the first Parquet file and check its contents
+        df = pd.read_parquet(output_files[0])
+        assert not df.empty
+        assert "PLATFORM_NUMBER" in df.columns
+        assert "LATITUDE" in df.columns
+        assert "LONGITUDE" in df.columns
+        assert "JULD" in df.columns
+
+    def test_converter_saildrones_sensor_merging(self):
+        """
+        Test that sensor readings for the same variable (e.g, TEMP) from
+        different instruments are correctly merged into a single column.
+        This test evaluates the backfilling logic in process_df().
+        """
+        converter = ConverterSaildrones(db_type="PHY")
+
+        # Dummy data simulating readings from multiple sensors.
+        # NAs are included to test the backfill (bfill) logic.
+        dummy_data = {
+            "time": pd.to_datetime(["2023-01-01T12:00", "2023-01-01T12:00", "2023-01-01T13:00"]),
+            "latitude": [35.0, 35.0, 36.0],
+            "longitude": [-70.0, -70.0, -71.0],
+            "wmo_id": ["TEST01", "TEST01", "TEST01"],
+            "CYCLE_NUMBER": [1, 1, 1],
+            "depth": [0.5, 1.7, 0.5],
+            # TEMP_CTD_RBR_MEAN and TEMP_SBE37_MEAN should merge to TEMP
+            "TEMP_CTD_RBR_MEAN": [20.5, np.nan, 21.0],
+            "TEMP_SBE37_MEAN": [np.nan, 20.2, np.nan],
+            # SAL_RBR_MEAN and SAL_SBE37_MEAN should merge to PSAL
+            "SAL_RBR_MEAN": [35.0, np.nan, 35.5],
+            "SAL_SBE37_MEAN": [np.nan, 34.8, np.nan]
+        }
+        dummy_df = pd.DataFrame(dummy_data)
+        invars = list(dummy_df.columns)
+
+        # Call the process_df method, which contains the merging logic.
+        result_df = converter.process_df(dummy_df, invars)
+
+        # Expected data after processing.
+        # The TEMP and PSAL columns should be filled based on the bfill logic.
+        sol_data = {
+            'LATITUDE': [35.0, 35.0, 36.0],
+            'LONGITUDE': [-70.0, -70.0, -71.0],
+            'JULD': pd.to_datetime(["2023-01-01T12:00", "2023-01-01T12:00", "2023-01-01T13:00"]),
+            'PLATFORM_NUMBER': ["TEST01", "TEST01", "TEST01"],
+            'CYCLE_NUMBER': [1, 1, 1],
+            'PRES': [0.533854, 1.712368, 0.533901],
+            'PRES_QC': [1, 1, 1],
+            'TEMP': [20.5, 20.2, 21.0], # Merged values
+            'TEMP_QC': [1, 1, 1],
+            'PSAL': [35.0, 34.8, 35.5], # Merged values
+            'PSAL_QC': [1, 1, 1],
+            'DB_NAME': ['Saildrones', 'Saildrones', 'Saildrones']
+        }
+        sol_df = pd.DataFrame(sol_data)
+
+        # Select and reorder columns to match the output
+        result_df = result_df[sol_df.columns].reset_index(drop=True)
+
+        pd.testing.assert_frame_equal(result_df, sol_df, check_exact=False, atol=1e-5, check_dtype=False)
+
+    def test_converter_saildrones_assign_depths(self):
+        """
+        Test that sensor variables are correctly assigned their known depths.
+        """
+        converter = ConverterSaildrones(db_type="BGC")
+
+        dummy_data = {
+            "time": pd.to_datetime(["2023-01-01T12:00:00"]),
+            "latitude": [35.0],
+            "longitude": [-70.0],
+            "wmo_id": ["TEST01"],
+            "CYCLE_NUMBER": [1],
+            "TEMP_CTD_MEAN": [20.1],      # depth 0.6
+            "SAL_SBE37_MEAN": [35.5],     # depth 1.7
+            "CHLOR_WETLABS_MEAN": [0.5],  # depth 1.9
+            "O2_CONC_MEAN": [280.0]       # depth 0.6
+        }
+        dummy_df = pd.DataFrame(dummy_data)
+
+        # Expected data after assign_depths: each sensor reading gets its
+        # own row, grouped by common identifiers and the assigned depth.
+        sol_data = {
+            "time": pd.to_datetime(["2023-01-01T12:00:00", "2023-01-01T12:00:00", "2023-01-01T12:00:00"]),
+            "latitude": [35.0, 35.0, 35.0],
+            "longitude": [-70.0, -70.0, -70.0],
+            "wmo_id": ["TEST01", "TEST01", "TEST01"],
+            "CYCLE_NUMBER": [1, 1, 1],
+            "depth": [0.6, 1.7, 1.9],
+            "TEMP_CTD_MEAN": [20.1, np.nan, np.nan],
+            "O2_CONC_MEAN": [280.0, np.nan, np.nan],
+            "SAL_SBE37_MEAN": [np.nan, 35.5, np.nan],
+            "CHLOR_WETLABS_MEAN": [np.nan, np.nan, 0.5]
+        }
+
+        id_vars = ["time", "latitude", "longitude", "wmo_id", "CYCLE_NUMBER", "depth"]
+        value_vars = sorted(["TEMP_CTD_MEAN", "SAL_SBE37_MEAN", "CHLOR_WETLABS_MEAN", "O2_CONC_MEAN"])
+        sol_df = pd.DataFrame(sol_data, columns=id_vars + value_vars)
+
+        # the method to be tested
+        result_df = converter.assign_depths(dummy_df).reset_index(drop=True)
+
+        # compare results
+        pd.testing.assert_frame_equal(result_df, sol_df, check_dtype=False)
+
+    def test_converter_saildrones_process_df_chunked(self):
+        """
+        Test that process_df_chunked's chunked branch agrees with its
+        unchunked branch.
+
+        The chunked branch only triggers above rows_per_chunk=50000, which no
+        test fixture reaches (the Saildrones goldens are 255 and 133 rows), so
+        we force here a small rows_per_chunk to exercise it.
+        """
+        converter = ConverterSaildrones(db_type="PHY")
+
+        n_rows = 120
+        rows_per_chunk = 50
+        dummy_data = {
+            "time": pd.date_range("2023-01-01T00:00", periods=n_rows, freq="1min"),
+            "latitude": np.linspace(35.0, 36.0, n_rows),
+            "longitude": np.linspace(-70.0, -69.0, n_rows),
+            "wmo_id": ["TEST01"] * n_rows,
+            "CYCLE_NUMBER": list(range(1, n_rows + 1)),
+            "depth": [0.5] * n_rows,
+            "TEMP_CTD_RBR_MEAN": np.linspace(20.0, 22.0, n_rows),
+            "SAL_RBR_MEAN": np.linspace(35.0, 35.5, n_rows),
+        }
+        dummy_df = pd.DataFrame(dummy_data)
+        invars = list(dummy_df.columns)
+
+        assert n_rows > rows_per_chunk, "fixture must cross the chunking threshold"
+
+        chunked = converter.process_df_chunked(
+            dummy_df, invars, rows_per_chunk=rows_per_chunk
+        ).compute()
+        unchunked = converter.process_df_chunked(
+            dummy_df, invars, rows_per_chunk=n_rows * 10
+        ).compute()
+
+        assert len(chunked) == len(unchunked)
+        pd.testing.assert_frame_equal(
+            chunked.reset_index(drop=True),
+            unchunked.reset_index(drop=True),
+        )
+
+    def test_converter_wrap_longitude(self):
+        import numpy as np
+
+        for j in range(2):
+            if j==0:
+                lon_list = [-70.00, 70.00, -181.10,  181.10, 0.,  180]
+                solution = [-70.00, 70.00,  178.90, -178.90, 0., -180]
+            else:
+                lon_list = [359.0,  360.0]
+                solution = [179.0, -180.0]
+            data = {
+                'LATITUDE': list(np.random.rand(len(lon_list))*180-90),
+                'LONGITUDE': lon_list,
+                'PSAL': list(np.random.rand(len(lon_list))+1),
+                'PRES': list(np.random.rand(len(lon_list))*1000),
+                'TEMP': list(np.random.rand(len(lon_list))*5+15),
+            }
+            pdf = pd.DataFrame(data).convert_dtypes(dtype_backend='pyarrow')
+            ddf = dd.from_pandas(pdf, npartitions=2)
+            print("input data:")
+            print(pdf)
+
+            sol_df = pdf.copy()
+            sol_df["LONGITUDE"] = solution
+            sol_df["LONGITUDE"] = sol_df["LONGITUDE"].astype("float64[pyarrow]")
+
+            # we need an instance of a converter to access the _wrap_longitude
+            # method
+            config = {
+                'db': 'GLODAP',
+                'db_type': 'PHY',
+                'input_path': "./",
+                'outdir_pq': "./",
+                'outdir_schema': "./",
+                'fname_pq': "test",
+                'add_derived_vars': True,
+                'overwrite': False,
+            }
+            ConverterPHY = ConverterGLODAP(config)
+
+            if j==0:
+                pdf = ConverterPHY._wrap_longitude(pdf)
+                ddf = ConverterPHY._wrap_longitude(ddf).compute()
+            else:
+                pdf = ConverterPHY._wrap_longitude(
+                    pdf,
+                    shift_range=True,
+                )
+                ddf = ConverterPHY._wrap_longitude(
+                    ddf,
+                    shift_range=True
+                ).compute()
+
+            print("solution:")
+            print(sol_df)
+            print("pdf[LONGITUDE]:")
+            print(pdf["LONGITUDE"])
+            print("ddf[LONGITUDE]:")
+            print(ddf["LONGITUDE"])
+            pd.testing.assert_frame_equal(pdf, sol_df)
+            pd.testing.assert_frame_equal(ddf, sol_df)
+
+
+####################################################################################################
+class TestConverterArgoGDACCluster:
+    """ConverterArgoGDAC.convert_dask_tools takes its sizing from dask_cluster.yaml.
+
+    The Client is patched out so these run without starting a cluster; the
+    conversion itself is covered by test_golden_argo_gdac.
+    """
+
+    @staticmethod
+    def _run(monkeypatch, **kwargs):
+        """Call convert_dask_tools with a stubbed Client and daskTools."""
+        import crocolaketools.converter.converterArgoGDAC as mod
+
+        calls = {"client_kwargs": None, "shutdown": 0, "chunk": None}
+
+        class FakeClient:
+            def __init__(self, **kw):
+                calls["client_kwargs"] = kw
+
+            def shutdown(self):
+                calls["shutdown"] += 1
+
+        class FakeDaskTools:
+            def __init__(self, **kw):
+                calls["chunk"] = kw["chunk"]
+
+            def convert_to_parquet(self):
+                pass
+
+        monkeypatch.setattr(mod, "Client", FakeClient)
+        monkeypatch.setattr(mod, "daskTools", FakeDaskTools)
+        monkeypatch.setattr(mod, "generateSchema",
+                            lambda outdir, db: type("S", (), {"schema_fname": Path(outdir) / "s"})())
+        mod.ConverterArgoGDAC.convert_dask_tools(
+            [["a.nc"], ["b.nc"]], [[], []], ["PHY"], "/tmp/out", "/tmp/schemas", **kwargs
+        )
+        return calls
+
+    def test_cluster_settings_come_from_config(self, monkeypatch):
+        calls = self._run(monkeypatch)
+        expected = cfgp.get_config_cluster_db_dict("ARGO-GDAC_PHY")
+        assert calls["client_kwargs"] == expected
+        assert calls["shutdown"] == 1
+
+    def test_cluster_key_overrides_the_default_key(self, monkeypatch):
+        calls = self._run(monkeypatch, cluster_key="TESTS")
+        assert calls["client_kwargs"] == cfgp.get_config_cluster_db_dict("TESTS")
+
+    def test_supplied_client_is_used_and_left_open(self, monkeypatch):
+        sentinel = object()
+        calls = self._run(monkeypatch, client=sentinel)
+        assert calls["client_kwargs"] is None
+        assert calls["shutdown"] == 0
+
+    def test_chunk_size_comes_from_config(self, monkeypatch):
+        calls = self._run(monkeypatch)
+        assert calls["chunk"] == cfgp.get_config_paths_db_dict("ARGO-GDAC_PHY")["chunk_size"]
+
+    def test_chunk_size_argument_wins(self, monkeypatch):
+        calls = self._run(monkeypatch, chunk_size=7)
+        assert calls["chunk"] == 7
+
+    def test_metadata_is_written_beside_the_dataset(self, monkeypatch, tmp_path):
+        """The GDAC index frame lands in <outdir>/metadata/.
+
+        Readers survive the extra directory because daskTools writes a
+        _metadata file, from which dask takes the file list.
+        """
+        import crocolaketools.converter.converterArgoGDAC as mod
+
+        class FakeDaskTools:
+            def __init__(self, **kw):
+                pass
+
+            def convert_to_parquet(self):
+                pass
+
+        monkeypatch.setattr(mod, "daskTools", FakeDaskTools)
+        monkeypatch.setattr(mod, "Client", lambda **kw: type("C", (), {"shutdown": lambda s: None})())
+        monkeypatch.setattr(mod, "generateSchema",
+                            lambda outdir, db: type("S", (), {"schema_fname": Path(outdir) / "s"})())
+        index = pd.DataFrame({"file": ["aoml/1/profiles/R1_001.nc"],
+                              "date_update": pd.to_datetime(["2026-01-01"])})
+        mod.ConverterArgoGDAC.convert_dask_tools(
+            [["a.nc"], []], [index, []], ["PHY"], tmp_path, tmp_path / "schemas",
+        )
+        written = tmp_path / "metadata" / "ArgoPHY_metadata.parquet"
+        assert written.is_file()
+        assert list(pd.read_parquet(written)["file"]) == ["aoml/1/profiles/R1_001.nc"]
+
+
+####################################################################################################
+class TestSprayGlidersChunkProfile:
+    """chunk_profile comes from datasets.yaml, overridable per call."""
+
+    def test_default_comes_from_config(self):
+        converter = ConverterSprayGliders(db_type="PHY")
+        expected = cfgp.get_config_paths_db_dict("SprayGliders_PHY")["chunk_profile"]
+        assert converter.chunk_profile == expected
+
+    def test_absent_from_config_falls_back_to_the_module_default(self, monkeypatch):
+        import crocolaketools.converter.converterSprayGliders as mod
+
+        real = cfgp.get_config_paths_db_dict
+
+        def without_chunk_profile(db_name):
+            cfg = dict(real(db_name))
+            cfg.pop("chunk_profile", None)
+            return cfg
+
+        monkeypatch.setattr(
+            "crocolaketools.config.config_paths.get_config_paths_db_dict",
+            without_chunk_profile,
+        )
+        assert ConverterSprayGliders(db_type="PHY").chunk_profile == mod.DEFAULT_CHUNK_PROFILE
+
+
+####################################################################################################
+class TestArgoGDACDownloadProcesses:
+    """nproc comes from datasets.yaml, not from a literal in the downloader."""
+
+    @staticmethod
+    def _capture(monkeypatch, **kwargs):
+        import crocolaketools.downloader.downloaderArgoGDAC as mod
+
+        seen = {}
+        monkeypatch.setattr(
+            mod.at, "argo_gdac",
+            lambda **kw: (seen.update(kw) or ([], pd.DataFrame(), [])),
+        )
+        mod.DownloaderArgoGDAC().argo_download("gdac", "out", ["PHY"], False, **kwargs)
+        return seen
+
+    def test_num_procs_comes_from_config(self, monkeypatch):
+        seen = self._capture(monkeypatch)
+        expected = cfgp.get_config_paths_db_dict("ARGO-GDAC_PHY")["num_procs"]
+        assert seen["NPROC"] == expected
+
+    def test_argument_wins_over_config(self, monkeypatch):
+        assert self._capture(monkeypatch, nproc=3)["NPROC"] == 3
+
+    def test_dryrun_forces_one_process(self, monkeypatch):
+        import crocolaketools.downloader.downloaderArgoGDAC as mod
+
+        seen = {}
+        monkeypatch.setattr(
+            mod.at, "argo_gdac",
+            lambda **kw: (seen.update(kw) or ([], pd.DataFrame(), [])),
+        )
+        mod.DownloaderArgoGDAC().argo_download("gdac", "out", ["PHY"], True, nproc=8)
+        assert seen["NPROC"] == 1

@@ -10,6 +10,7 @@
 ##########################################################################
 import copy
 from datetime import datetime
+import json
 import numpy as np
 import pandas as pd
 import pathlib
@@ -18,7 +19,7 @@ from pprint import pprint
 import pyarrow as pa
 import pyarrow.parquet as pq
 import xarray as xr
-import crocolakeloader.params as params
+from crocolaketools import db_params
 ##########################################################################
 
 class generateSchema():
@@ -40,10 +41,10 @@ class generateSchema():
         """
 
         if outdir is None:
-            self.outdir = './schemas/'
+            self.outdir = Path("./schemas")
         else:
-            self.outdir = outdir
-        print("Schema(s) will be stored at " + self.outdir)
+            self.outdir = Path(outdir)
+        print("Schema(s) will be stored at " + str(self.outdir))
 
         if isinstance(db,str):
             db = db.upper()
@@ -70,22 +71,30 @@ class generateSchema():
         if self.schema is None:
             raise ValueError("schema is None -- did you generate it?")
 
-        Path(self.outdir).mkdir(parents = True, exist_ok = True)
+        self.outdir.mkdir(parents = True, exist_ok = True)
 
-        self.schema_fname = self.outdir + self.schema_name
+        self.schema_fname = self.outdir / self.schema_name
 
         pq.write_metadata(
             self.schema,
             self.schema_fname
         )
 
-        print("Schema(s) stored at " + self.schema_fname)
+        # human-readable companion
+        self.schema_json_fname = self.schema_fname.with_name(self.schema_name + ".json")
+        columns = {field.name: str(field.type) for field in self.schema}
+        with open(self.schema_json_fname, "w") as f:
+            json.dump({"n_columns": len(columns), "columns": columns}, f, indent=2)
+            f.write("\n")
+
+        print("Schema(s) stored at " + str(self.schema_fname))
+        print("Schema(s) companion stored at " + str(self.schema_json_fname))
 
 #------------------------------------------------------------------------------#
 ## Generate schema
     def generate_schema(self,db):
 
-        params_schema = params.params["Argo"+db].copy()
+        params_schema = db_params.params["Argo"+db].copy()
 
         fields = []
         for p in params_schema:
@@ -99,7 +108,7 @@ class generateSchema():
             elif p in ['LATITUDE','LONGITUDE']:
                 f = pa.field( p, pa.float64() )
 
-            elif p=='JULD':
+            elif p in ['JULD','DATE_UPDATE']:
                 f = pa.field( p, pa.from_numpy_dtype(np.dtype('datetime64[ns]') ) )
 
             elif (p=='DIRECTION') or ('DATA_MODE' in p):
@@ -116,4 +125,4 @@ class generateSchema():
 ##########################################################################
 
 if __name__ == "__main__":
-    test = generateSchema(outdir="./test/")
+    test = generateSchema(outdir="./test")

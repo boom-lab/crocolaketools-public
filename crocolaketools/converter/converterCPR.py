@@ -8,11 +8,10 @@
 # @date Fri 21 Mar 2025
 
 ##########################################################################
-import os
 import warnings
 import logging
 import pandas as pd
-from crocolakeloader import params
+from crocolaketools import db_params
 from crocolaketools.converter.converter import Converter
 ##########################################################################
 
@@ -31,10 +30,10 @@ class ConverterCPR(Converter):
     # Constructors/Destructors                                           #
     # ------------------------------------------------------------------ #
 
-    def __init__(self, db=None, db_type=None, input_path=None, outdir_pq=None, outdir_schema=None, fname_pq=None, add_derived_vars=False, overwrite=False):
+    def __init__(self, db=None, db_type=None, input_path=None, outdir_pq=None, outdir_schema=None, fname_pq=None, add_derived_vars=False, overwrite=False, tmp_path=None):
         if not db == "CPR":
             raise ValueError("Database must be CPR.")
-        Converter.__init__(self, db, db_type, input_path, outdir_pq, outdir_schema, fname_pq, add_derived_vars, overwrite)
+        Converter.__init__(self, db, db_type, input_path, outdir_pq, outdir_schema, fname_pq, add_derived_vars, overwrite, tmp_path)
 
     # ------------------------------------------------------------------ #
     # Methods                                                            #
@@ -53,7 +52,7 @@ class ConverterCPR(Converter):
         if filename is None:
             raise ValueError("No filename provided for CPR database.")
 
-        input_fname = self.input_path + filename
+        input_fname = self.input_path / filename
         logger.info(f"Reading CPR file: {input_fname}")
 
         try:
@@ -79,7 +78,7 @@ class ConverterCPR(Converter):
         """
 
         # Rename columns using CPR2CROCOLAKE mapping
-        df = df.rename(columns=params.params["CPR2CROCOLAKE"])
+        df = df.rename(columns=db_params.params["CPR2CROCOLAKE"])
 
         # Convert CPR date column to datetime
         logger.info("Converting CPR date column to datetime")

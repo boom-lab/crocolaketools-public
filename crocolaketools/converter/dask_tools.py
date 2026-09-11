@@ -14,8 +14,9 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 import pandas as pd
 import xarray as xr
-import argopy
+
 import numpy as np
+from pathlib import Path
 # ignore pandas "educational" performance warnings
 import warnings
 warnings.simplefilter(action="ignore", category=pd.errors.PerformanceWarning)
@@ -23,7 +24,16 @@ warnings.simplefilter(action="ignore", category=pd.errors.PerformanceWarning)
 #warnings.simplefilter(action="error", category=RuntimeWarning)
 from pprint import pprint
 from dask.distributed import print
-import crocolakeloader.params as params
+from crocolaketools import db_params
+
+# import argopy requires some workaround to import erddapy because of versions
+# mismatch
+import erddapy.erddapy
+if not hasattr(erddapy.erddapy, '_quote_string_constraints'):
+    from erddapy.core.url import _quote_string_constraints
+    erddapy.erddapy._quote_string_constraints = _quote_string_constraints
+import argopy
+
 ##########################################################################
 
 class daskTools():
@@ -37,7 +47,7 @@ class daskTools():
     # Constructors/Destructors                                           #
     # ------------------------------------------------------------------ #
 
-    def __init__(self, db_type=None, out_dir=None, flist=None, schema_path='../schemas', chunk=None):
+    def __init__(self, db_type=None, out_dir=None, flist=None, schema_path="../schemas", chunk=None):
         """Constructor
 
         Arguments:
@@ -61,9 +71,9 @@ class daskTools():
             self.flist = flist
 
         if out_dir is None:
-            self.out_dir = './ArgoParquet/'
+            self.out_dir = Path("./ArgoParquet")
         else:
-            self.out_dir = out_dir
+            self.out_dir = Path(out_dir)
 
         if chunk is None:
             self.chunk = 2000
@@ -71,9 +81,9 @@ class daskTools():
             self.chunk = chunk
 
         if schema_path is None:
-            self.schema_path = '../schemas/Argo' + self.db_type + '_schema.metadata'
+            self.schema_path = Path("../schemas") / ("Argo" + self.db_type + "_schema.metadata")
         else:
-            self.schema_path = schema_path
+            self.schema_path = Path(schema_path)
         self.schema = pq.read_schema(self.schema_path)
         self.__translate_pq_to_pd()
 
@@ -177,7 +187,7 @@ class daskTools():
 
             df = df.repartition(partition_size="300MB")
 
-            name_function = lambda x: f"Argo{self.db_type}_dask_{j}_{x}.parquet"
+            name_function = lambda x: f"Argo{self.db_type}_{x}.parquet"
 
             # to_parquet() triggers execution of lazy functions
             append_db = False
@@ -273,7 +283,7 @@ class daskTools():
         """ Select variables in target Argo database"""
 
         if self.db_type in ["PHY","BGC"]:
-            self.VARS = params.params["Argo"+self.db_type].copy()
+            self.VARS = db_params.params["Argo"+self.db_type].copy()
         else:
             raise ValueError("List of variables to read from Argo files not provided.")
 

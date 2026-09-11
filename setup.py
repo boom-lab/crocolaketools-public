@@ -15,16 +15,36 @@ setup(
     long_description=long_description,
     author='Enrico Milanese',
     author_email='enrico.milanese@whoi.edu',
-    packages=find_packages(),
+    packages=find_packages(exclude=["tests", "tests.*"]),
     install_requires=parse_requirements('requirements.txt'),
     entry_points={
         'console_scripts': [
-            'crocolaketools = scripts.main:main',
-            'argo2argoqc_phy = scripts.argo2argoqc_phy:main',
             'argo2argoqc_bgc = scripts.argo2argoqc_bgc:main',
-            'glodap2parquet = scripts.glodap2parquet:glodap2parquet',
-            'spray2parquet = scripts.spray2parquet:spray2parquet',
+            'argo2argoqc_phy = scripts.argo2argoqc_phy:main',
             'argogdac2parquet = scripts.argogdac2parquet:argogdac2parquet',
+            'crocolaketools = scripts.main:main',
+            'download_demo_data = scripts.download_demo_data:main',
+            'download_glodap = scripts.download_glodap:main',
+            'download_oleanderXBT = scripts.download_oleanderXBT:main',
+            'download_saildrones = scripts.download_saildrones:main',
+            'download_spraygliders = scripts.download_spraygliders:main',
+            'download_ioos_gliders = scripts.download_ioos_gliders:main',
+            'glodap2parquet = scripts.glodap2parquet:main',
+            'merge_crocolake = scripts.merge_crocolake:main',
+            'oleanderXBT2parquet = scripts.oleanderXBT2parquet:main',
+            'saildrones2parquet = scripts.saildrones2parquet:main',
+            'spray2parquet = scripts.spray2parquet:main',
+            'spots2parquet = scripts.spots2parquet:main',
         ],
     },
+    include_package_data=True,
+    package_data={
+        "crocolaketools": [
+            "config/datasets.example.yaml",
+            "config/dask_cluster.example.yaml",
+            "config/generate_crocolake_symlinks.sh",
+            "config/resolve_config_dir.sh",
+            "utils/parse_yaml_argo_gdac.sh",
+        ]
+    }
 )

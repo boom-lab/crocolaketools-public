@@ -1,0 +1,113 @@
+#!/usr/bin/env bash
+
+# Quit on error
+set -e
+set -o pipefail
+
+# This script will create symbolic links to the most recent version of the
+# parquet databases that form CrocoLake's data lake.
+
+SCRIPT_DIR=$(dirname "$(readlink -f "$0")")
+echo "Script directory: $SCRIPT_DIR"
+. "${SCRIPT_DIR}/resolve_config_dir.sh" || exit 1
+echo "Config directory: $CONFIG_DIR"
+yaml_file="${CONFIG_DIR}""/datasets.yaml"
+crocolake_variants=(
+  "PHY"
+  "BGC"
+)
+# If variants are provided, use those instead
+if [ $# -gt 0 ]; then
+    # Clear default array
+    crocolake_variants=()
+
+    # Add each command-line argument to the array
+    for arg in "$@"; do
+        crocolake_variants+=("$arg")
+    done
+fi
+
+# Loop through each variant of target CrocoLake directories
+for var in "${crocolake_variants[@]}"; do
+
+    # Extract the `ln_path` for the CROCOLAKE group
+    crocolake_ln=$("$YQ" ".CROCOLAKE_"$var".ln_path" "$yaml_file")
+    echo "ln_path for CROCOLAKE_$var: $crocolake_ln"
+    # Check if CROCOLAKE ln_path exists
+    if [ -z "$crocolake_ln" ]; then
+      echo "CROCOLAKE ln_path not found in the YAML file."
+      exit 1
+    fi
+    crocolake_ln=$(echo "$crocolake_ln" | sed 's/^"//;s/"$//')
+    crocolake_path_ln="${CONFIG_DIR}/${crocolake_ln}"
+    if [ ! -d "$crocolake_path_ln" ]; then
+      echo "Directory $crocolake_path_ln does not exist. Creating it..."
+      mkdir -p $crocolake_path_ln
+    fi
+    if [[ "${crocolake_ln}" != /* ]]; then
+        crocolake_ln=$(realpath -m -s "${CONFIG_DIR}/${crocolake_ln}")
+    else
+        crocolake_ln=$(realpath -m -s "${crocolake_ln}")
+    fi
+    echo "ln_path for CROCOLAKE_$var: $crocolake_ln"
+
+
+    crocolake_out=$("$YQ" ".CROCOLAKE_"$var".outdir_pq" "$yaml_file")
+    crocolake_out=$(echo "$crocolake_out" | sed 's/^"//;s/"$//')
+    if [[ "${crocolake_out}" != /* ]]; then
+        crocolake_out=$(realpath -m -s "${CONFIG_DIR}/${crocolake_out}")
+    else
+        crocolake_out=$(realpath -m -s "${crocolake_out}")
+    fi
+    echo "crocolake_out for CROCOLAKE_$var: $crocolake_out"
+
+    echo "Creating folder $crocolake_ln if it does not exist"
+    mkdir -p $crocolake_ln
+
+    # Each database's output directory and the name to link it under. The link
+    # name is db_codename when the dataset declares one, so that renaming
+    # outdir_pq does not change what CrocoLakeLoader globs for. Read before
+    # removing anything, so a failure here leaves the existing links in place.
+    db_rows=$("$YQ" -r --arg var "$var" '.[] | select(has("outdir_pq") and .db_type == $var) | [.outdir_pq, (.db_codename // "")] | @tsv' "$yaml_file")
+    if [ -z "$db_rows" ]; then
+        echo "No datasets with db_type ${var} found in ${yaml_file}. Refusing to" >&2
+        echo "remove the existing symlinks, since there would be nothing to replace" >&2
+        echo "them with." >&2
+        exit 1
+    fi
+
+    echo "Removing all existing symbolic links in $crocolake_ln"
+    find "$crocolake_ln" -type l -exec rm {} \;
+
+    while IFS=$'\t' read -r outdir_pq db_codename; do
+      # Skip the CROCOLAKE outdir_pq itself
+
+      # skip if it's the crocolake dir or the other db type (bgc/phy)
+      if [[ "$outdir_pq" != *"ARGO-CLOUD"* ]] && [[ "$outdir_pq" != *"ARGO-GDAC"* ]] && [[ "$outdir_pq" != *"CROCOLAKE"* ]]; then
+        echo "Processing outdir_pq: $outdir_pq"
+        outdir_pq=$(echo "$outdir_pq" | sed 's/^"//;s/"$//')
+        if [[ "${outdir_pq}" != /* ]]; then
+          outdir_pq=$(realpath -m -s "${CONFIG_DIR}/${outdir_pq}")
+        else
+          outdir_pq=$(realpath -m -s "${outdir_pq}")
+        fi
+
+        if [ "${outdir_pq: -1}" != "/" ]; then
+          outdir_pq="${outdir_pq}/"
+        fi
+
+        # Create a symbolic link in the CROCOLAKE directory
+        if [ -d "$outdir_pq" ]; then
+          if [ -n "$db_codename" ]; then
+            db_name="$db_codename"
+          else
+            db_name=$(basename "$outdir_pq")
+          fi
+          echo "Creating symlink for $db_name in $crocolake_ln (points to: $outdir_pq)"
+          ln -s "$outdir_pq" "$crocolake_ln/$db_name"
+        else
+          echo "Destination directory $outdir_pq does not exist. Skipping symlink creation. This usually happens if you have not generated this parquet dataset first."
+        fi
+      fi
+    done <<< "$db_rows"
+done

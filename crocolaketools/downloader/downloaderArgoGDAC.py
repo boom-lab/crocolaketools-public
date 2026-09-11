@@ -10,6 +10,7 @@
 ##########################################################################
 import copy
 import time
+from crocolaketools.config import config_paths as cfgp
 from crocolaketools.downloader import argo_tools as at
 from crocolaketools.downloader.downloader import Downloader
 
@@ -18,6 +19,9 @@ import pandas as pd
 from warnings import simplefilter
 simplefilter(action="ignore", category=pd.errors.PerformanceWarning)
 ##########################################################################
+
+#: Download processes per database when datasets.yaml does not say.
+DEFAULT_NUM_PROCS = 36
 
 class DownloaderArgoGDAC(Downloader):
 
@@ -37,12 +41,13 @@ class DownloaderArgoGDAC(Downloader):
     # Methods                                                            #
     # ------------------------------------------------------------------ #
 
-    def argo_download(self,gdac_path, outdir_nc, db_names, dryrun_flag):
+    def argo_download(self,gdac_path, outdir_nc, db_names, dryrun_flag, nproc=None):
+        """Mirror the GDAC profile files for each requested database type.
 
-        if dryrun_flag:
-            nproc = 1
-        else:
-            nproc = 36
+        nproc -- download processes per database type
+                 (default: num_procs in datasets.yaml, else 36; always 1 for a
+                 dry run, which downloads nothing)
+        """
 
         wmos_fp_phy = []
         wmos_fp_bgc = []
@@ -52,8 +57,18 @@ class DownloaderArgoGDAC(Downloader):
         for k in range(len(db_names)):
             start_time = time.time()
 
-            db_name = db_names[k]
+            db_name = db_names[k].upper()
             print("Database " + db_name + "...")
+
+            if dryrun_flag:
+                db_nproc = 1
+            elif nproc is not None:
+                db_nproc = nproc
+            else:
+                db_nproc = cfgp.get_config_paths_db_dict(
+                    "ARGO-GDAC_" + db_name
+                ).get("num_procs", DEFAULT_NUM_PROCS)
+            print("Download processes for " + db_name + ": " + str(db_nproc))
 
             wmos, metadata, wmos_fp = at.argo_gdac(
                 gdac_path=gdac_path,
@@ -63,15 +78,15 @@ class DownloaderArgoGDAC(Downloader):
                 skip_downloads=False,
                 dryrun=dryrun_flag,
                 overwrite_profiles=True,
-                NPROC=nproc,
+                NPROC=db_nproc,
                 verbose=True,
-                checktime=True
+                checktime=dryrun_flag
             )
 
-            if db_name=="phy":
+            if db_name=="PHY":
                 wmos_fp_phy = copy.deepcopy(wmos_fp)
                 metadata_phy = metadata
-            elif db_name=="bgc":
+            elif db_name=="BGC":
                 wmos_fp_bgc = copy.deepcopy(wmos_fp)
                 metadata_bgc = metadata
 
