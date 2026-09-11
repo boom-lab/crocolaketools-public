@@ -131,7 +131,7 @@ Source and selection:
 Implementation requirements:
 - Create crocolaketools/downloader/downloader<DB>.py.
 - Create scripts/download_<db>.py.
-- Update config.yaml with the required downloader settings.
+- Update datasets.yaml with the required downloader settings.
 - Register the CLI entry point in setup.py.
 - Add tests with mocked network/ERDDAP responses.
 - Preserve these existing changes: <DETAILS>.
@@ -181,7 +181,7 @@ Implementation requirements:
 - Parse the manifest and support an optional local manifest path.
 - Skip archives whose expected extracted NetCDF files already exist.
 - Use inherited temporary-file downloads and ZIP extraction.
-- Add EXAMPLESURVEY_PHY to config.yaml and register the console script.
+- Add EXAMPLESURVEY_PHY to datasets.yaml and register the console script.
 - Add mocked tests for manifest parsing, URL construction, skip behavior,
   extraction, and one failed URL.
 

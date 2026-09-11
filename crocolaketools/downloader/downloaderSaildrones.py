@@ -8,8 +8,10 @@
 ## @date Wed 18 Mar 2026
 
 ##########################################################################
-import os
 import time
+from pathlib import Path
+from urllib.parse import urlparse
+
 import requests
 from crocolaketools.downloader.downloader import Downloader
 ##########################################################################
@@ -98,7 +100,7 @@ class DownloaderSaildrones(Downloader):
         urls = self.get_url()
 
         for url in urls:
-            zip_fname = os.path.basename(url)
+            zip_fname = Path(urlparse(url).path).name
 
             # Define what the extracted .nc file name should be
             if zip_fname.endswith('.nc_.zip'):
@@ -108,8 +110,8 @@ class DownloaderSaildrones(Downloader):
             else:
                 nc_fname = zip_fname.replace('.zip', '')
 
-            local_nc_path = os.path.join(self.input_path, nc_fname)
-            local_zip_path = os.path.join(self.input_path, zip_fname)
+            local_nc_path = self.input_path / nc_fname
+            local_zip_path = self.input_path / zip_fname
 
 
             if self._is_already_downloaded(local_nc_path):
@@ -131,12 +133,10 @@ class DownloaderSaildrones(Downloader):
                     print(f"File {zip_fname} returned 404 error. Skipping.")
                 else:
                     print(f"HTTP error occurred for {zip_fname}: {e}")
-                    if os.path.exists(local_zip_path):
-                        os.remove(local_zip_path)
+                    local_zip_path.unlink(missing_ok=True)
             except Exception as e:
                 print(f"Error downloading/extracting {zip_fname}: {e}")
-                if os.path.exists(local_zip_path):
-                    os.remove(local_zip_path)
+                local_zip_path.unlink(missing_ok=True)
 
         elapsed_time = time.time() - start_time
         print("done.")

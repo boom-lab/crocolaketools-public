@@ -5,8 +5,8 @@ set -e
 set -o pipefail
 
 SCRIPT_DIR=$(dirname "$(readlink -f "$0")")
-CONFIG_DIR=$(realpath "${SCRIPT_DIR}/../config")
-yaml_file="${CONFIG_DIR}""/config.yaml"
+. "${SCRIPT_DIR}/../config/resolve_config_dir.sh" || exit 1
+yaml_file="${CONFIG_DIR}""/datasets.yaml"
 argo_variants=(
   "PHY"
   "BGC"
@@ -27,17 +27,17 @@ fi
 # Loop through each variant of target CrocoLake directories
 for var in "${argo_variants[@]}"; do
 
-    IN_PATH=$(yq ".\"ARGO-GDAC_${var}\".input_path" "$yaml_file")
+    IN_PATH=$("$YQ" ".\"ARGO-GDAC_${var}\".input_path" "$yaml_file")
     IN_PATH=$(echo "$IN_PATH" | sed 's/^"//;s/"$//')
-    if resolved_path=$(realpath "${CONFIG_DIR}/${IN_PATH}" 2>/dev/null); then
+    if resolved_path=$(realpath -m -s "${CONFIG_DIR}/${IN_PATH}" 2>/dev/null); then
         IN_PATH="$resolved_path"
     else
         IN_PATH="${IN_PATH}"
     fi
 
-    OUT_PATH=$(yq ".\"ARGO-GDAC_${var}\".outdir_pq" "$yaml_file")
+    OUT_PATH=$("$YQ" ".\"ARGO-GDAC_${var}\".outdir_pq" "$yaml_file")
     OUT_PATH=$(echo "$OUT_PATH" | sed 's/^"//;s/"$//')
-    if resolved_path=$(realpath "${CONFIG_DIR}/${OUT_PATH}" 2>/dev/null); then
+    if resolved_path=$(realpath -m -s "${CONFIG_DIR}/${OUT_PATH}" 2>/dev/null); then
         OUT_PATH="$resolved_path"
     else
         OUT_PATH="${OUT_PATH}"

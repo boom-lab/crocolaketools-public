@@ -108,9 +108,9 @@ class TestLocalPath:
     def test_path(self, tmp_path, mock_base_downloader):
         """Local path is input_path / dataset_id.parquet."""
         d = DownloaderIOOSGliders(config=dict(DUMMY_CONFIG))
-        d.input_path = str(tmp_path) + "/"
+        d.input_path = tmp_path
         ds = "ru29-20210601T1200-delayed"
-        assert d._local_path(ds) == os.path.join(d.input_path, ds + ".parquet")
+        assert d._local_path(ds) == d.input_path / (ds + ".parquet")
 
 
 class TestGetDatasetUrl:
@@ -181,7 +181,7 @@ class TestBuildDownloadQueue:
     def test_overwrite_queues_all(self, tmp_path, mock_base_downloader):
         """overwrite queues every dataset."""
         d = DownloaderIOOSGliders(config=dict(DUMMY_CONFIG, sync=True))
-        d.input_path = str(tmp_path) + "/"
+        d.input_path = tmp_path
         d.overwrite = True
         ids = ["a-delayed", "b-delayed"]
         to_dl, current, no_ts, bounds = d._build_download_queue(ids)
@@ -190,7 +190,7 @@ class TestBuildDownloadQueue:
     def test_skip_existing_no_sync(self, tmp_path, mock_base_downloader):
         """Existing files are skipped when sync is False."""
         d = DownloaderIOOSGliders(config=dict(DUMMY_CONFIG, sync=False))
-        d.input_path = str(tmp_path) + "/"
+        d.input_path = tmp_path
         d.overwrite = False
         (tmp_path / "a-delayed.parquet").write_bytes(b"data")
         to_dl, current, no_ts, bounds = d._build_download_queue(["a-delayed", "b-delayed"])
@@ -200,7 +200,7 @@ class TestBuildDownloadQueue:
     def test_sync_server_newer(self, tmp_path, mock_base_downloader):
         """sync queues a dataset when the server copy is newer."""
         d = DownloaderIOOSGliders(config=dict(DUMMY_CONFIG, sync=True))
-        d.input_path = str(tmp_path) + "/"
+        d.input_path = tmp_path
         d.overwrite = False
         (tmp_path / "a-delayed.parquet").write_bytes(b"data")
         with patch.object(DownloaderIOOSGliders, "get_server_timestamp",
@@ -213,7 +213,7 @@ class TestBuildDownloadQueue:
     def test_sync_up_to_date(self, tmp_path, mock_base_downloader):
         """sync skips a dataset when the local copy is current."""
         d = DownloaderIOOSGliders(config=dict(DUMMY_CONFIG, sync=True))
-        d.input_path = str(tmp_path) + "/"
+        d.input_path = tmp_path
         d.overwrite = False
         (tmp_path / "a-delayed.parquet").write_bytes(b"data")
         with patch.object(DownloaderIOOSGliders, "get_server_timestamp",
@@ -227,7 +227,7 @@ class TestBuildDownloadQueue:
     def test_sync_no_server_timestamp(self, tmp_path, mock_base_downloader):
         """sync skips a dataset with no server timestamp."""
         d = DownloaderIOOSGliders(config=dict(DUMMY_CONFIG, sync=True))
-        d.input_path = str(tmp_path) + "/"
+        d.input_path = tmp_path
         d.overwrite = False
         (tmp_path / "a-delayed.parquet").write_bytes(b"data")
         with patch.object(DownloaderIOOSGliders, "get_server_timestamp",
@@ -243,7 +243,7 @@ class TestDownload:
     def test_no_datasets(self, tmp_path, mock_base_downloader):
         """download returns (0, 0) when there are no datasets."""
         d = DownloaderIOOSGliders(config=dict(DUMMY_CONFIG))
-        d.input_path = str(tmp_path) + "/"
+        d.input_path = tmp_path
         d.dryrun = False
         with patch.object(DownloaderIOOSGliders, "list_dataset_ids", return_value=[]):
             assert d.download() == (0, 0)
@@ -251,7 +251,7 @@ class TestDownload:
     def test_dryrun(self, tmp_path, mock_base_downloader):
         """dryrun returns the number queued without downloading."""
         d = DownloaderIOOSGliders(config=dict(DUMMY_CONFIG))
-        d.input_path = str(tmp_path) + "/"
+        d.input_path = tmp_path
         d.dryrun = True
         ids = ["a-delayed", "b-delayed"]
         with patch.object(DownloaderIOOSGliders, "list_dataset_ids", return_value=ids), \
@@ -265,7 +265,7 @@ class TestDownload:
     def test_download_counts(self, tmp_path, mock_base_downloader):
         """Completed and failed counts come from _download_one."""
         d = DownloaderIOOSGliders(config=dict(DUMMY_CONFIG))
-        d.input_path = str(tmp_path) + "/"
+        d.input_path = tmp_path
         d.dryrun = False
         ids = ["a-delayed", "b-delayed", "c-delayed"]
 
@@ -292,7 +292,7 @@ class TestGatedParallelDownload:
         for flag, expected_name in ((True, "FirstByteGate"), (False, "NoOpGate")):
             d = DownloaderIOOSGliders(config=dict(DUMMY_CONFIG, gated_parallel_download=flag))
             d.num_threads = 1
-            d.input_path = str(tmp_path) + "/"
+            d.input_path = tmp_path
             local_path = str(tmp_path / "a-delayed.parquet")
 
             calls = []
@@ -356,7 +356,7 @@ class TestGatedParallelDownload:
 
 
 class TestConstraints:
-    """Tests for config.yaml constraint support in DownloaderERDDAP."""
+    """Tests for datasets.yaml constraint support in DownloaderERDDAP."""
 
     def test_no_constraints_by_default(self, mock_base_downloader):
         """time_start, time_end, extra_constraints are all None/empty by default."""
@@ -423,7 +423,7 @@ class TestConstraints:
             "time>=": "2025-01-01T00:00:00Z",
             "time<=": "2026-01-01T00:00:00Z",
         }))
-        d.input_path = str(tmp_path) + "/"
+        d.input_path = tmp_path
 
         # dataset range is entirely before the requested window
         with patch.object(DownloaderIOOSGliders, "_get_dataset_time_range",
@@ -442,7 +442,7 @@ class TestConstraints:
         d = DownloaderIOOSGliders(config=dict(DUMMY_CONFIG, constraints={
             "time>=": "2021-06-01T00:00:00Z",
         }))
-        d.input_path = str(tmp_path) + "/"
+        d.input_path = tmp_path
 
         captured = {}
 
@@ -470,7 +470,7 @@ class TestConstraints:
 @pytest.fixture
 def mock_base_downloader():
     """Patch Downloader.__init__ and configure_logging so tests don't
-    need config.yaml or write a log file."""
+    need datasets.yaml or write a log file."""
     with patch(
         "crocolaketools.downloader.downloaderERDDAP.Downloader.__init__",
         return_value=None,

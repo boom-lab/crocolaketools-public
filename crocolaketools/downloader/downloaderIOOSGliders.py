@@ -12,8 +12,8 @@
 
 ################################################################################################
 import logging
-import os
 from datetime import datetime
+from pathlib import Path
 from typing import Optional
 
 from crocolaketools.downloader.downloaderERDDAP import DownloaderERDDAP
@@ -346,11 +346,11 @@ class DownloaderIOOSGliders(DownloaderERDDAP):
             return dataset_ids
         return [d for d in dataset_ids if d.endswith(_DELAYED_SUFFIX)]
 
-    def _local_path(self, dataset_id: str) -> str:
+    def _local_path(self, dataset_id: str) -> Path:
         """
             Return the local parquet file path for `dataset_id`.
         """
-        return os.path.join(self.input_path, f"{dataset_id}.parquet")
+        return self.input_path / f"{dataset_id}.parquet"
 
 ################################################################################################
 if __name__ == "__main__":

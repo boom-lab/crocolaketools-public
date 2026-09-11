@@ -12,9 +12,10 @@
 
 ##########################################################################
 import logging
-import os
 import re
 import html as html_module
+from pathlib import Path
+from typing import Union
 from urllib.parse import urlparse
  
 import requests
@@ -59,7 +60,7 @@ class DownloaderURLList(Downloader):
         overwrite: bool = False,
         dryrun: bool = False,
         config: dict = None,
-        base_dir: str = None,
+        base_dir: Union[str, Path] = None,
     ):
         """Constructor.
  
@@ -71,7 +72,7 @@ class DownloaderURLList(Downloader):
         overwrite   : if True, re-download files even if already present.
         dryrun      : if True, log what would be downloaded without fetching.
         config      : optional config dict with at least {'db', 'db_type'}.
-                      Defaults to OleanderXBT PHY from config.yaml.
+                      Defaults to OleanderXBT PHY from datasets.yaml.
         base_dir    : optional destination directory. If None, uses the
                       input_path resolved by the base Downloader.
         """
@@ -83,7 +84,8 @@ class DownloaderURLList(Downloader):
         super().__init__(config)
  
         self.urls = urls
-        self.base_dir = base_dir if base_dir is not None else getattr(self, 'input_path', None)
+        base_dir = base_dir if base_dir is not None else getattr(self, 'input_path', None)
+        self.base_dir = None if base_dir is None else Path(base_dir)
         self.log_file = log_file
         # Override base class defaults with subclass-specific values
         self.num_threads = num_threads
@@ -113,8 +115,8 @@ class DownloaderURLList(Downloader):
         # Build (url, local_zip_path) pairs, skipping already-present files
         url_path_pairs = []
         for url in self.urls:
-            zip_fname = os.path.basename(urlparse(url).path)
-            zip_path  = os.path.join(self.base_dir, zip_fname)
+            zip_fname = Path(urlparse(url).path).name
+            zip_path  = self.base_dir / zip_fname
  
             if not self.overwrite and self._nc_files_exist(zip_path):
                 logging.info(
@@ -138,11 +140,11 @@ class DownloaderURLList(Downloader):
         # Extract each downloaded zip
         if not self.dryrun:
             for _url, zip_path in url_path_pairs:
-                if os.path.isfile(zip_path):
+                if zip_path.is_file():
                     try:
                         self.unzip_file(zip_path)
                         logging.info("Extracted %s", zip_path)
-                        print(f"Extracted {os.path.basename(zip_path)}")
+                        print(f"Extracted {zip_path.name}")
                     except Exception as exc:
                         logging.error(
                             "Failed to extract %s: %s", zip_path, exc
@@ -154,7 +156,7 @@ class DownloaderURLList(Downloader):
     # Private helpers                                                      #
     # ------------------------------------------------------------------ #
  
-    def _nc_files_exist(self, zip_path: str) -> bool:
+    def _nc_files_exist(self, zip_path: Union[str, Path]) -> bool:
         """Return True if NetCDF files for this zip already exist locally.
  
         Checks the destination directory for .nc files whose names start
@@ -164,13 +166,14 @@ class DownloaderURLList(Downloader):
         ----------
         zip_path : expected local path of the zip archive.
         """
-        extract_dir = os.path.dirname(zip_path)
-        year = os.path.basename(zip_path)[:4]
-        if not os.path.exists(extract_dir):
+        zip_path = Path(zip_path)
+        extract_dir = zip_path.parent
+        year = zip_path.name[:4]
+        if not extract_dir.is_dir():
             return False
         return any(
-            f.endswith('.nc') and f.startswith(year)
-            for f in os.listdir(extract_dir)
+            f.suffix == '.nc' and f.name.startswith(year)
+            for f in extract_dir.iterdir()
         )
 
     # ------------------------------------------------------------------ #

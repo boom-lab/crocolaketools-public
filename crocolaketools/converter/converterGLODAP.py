@@ -8,11 +8,11 @@
 ## @date Tue 04 Feb 2025
 
 ##########################################################################
-import os
 import warnings
 import dask.dataframe as dd
 import gsw
 import numpy as np
+from pathlib import Path
 import pandas as pd
 import pyarrow as pa
 import pyarrow.parquet as pq
@@ -79,7 +79,8 @@ class ConverterGLODAP(Converter):
             filename = "GLODAPv3_Merged_Master_File.csv"
             print("Using default filename: ", filename)
 
-        input_fname = filename if os.path.isabs(filename) else self.input_path / filename
+        filename = Path(filename)
+        input_fname = filename if filename.is_absolute() else self.input_path / filename
         print("Reading GLODAP file: ", input_fname)
 
         # low_memory=False as GLODAP is a small db

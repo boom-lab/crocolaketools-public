@@ -1,4 +1,3 @@
-import os
 import warnings
 import dask.dataframe as dd
 import gsw

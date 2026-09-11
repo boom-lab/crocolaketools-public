@@ -9,10 +9,9 @@
 ## @date Fri 13 Mar 2026
 
 ##########################################################################
-import os
 import requests
 
-from crocolaketools.downloader.downloader import Downloader
+from crocolaketools.downloader.downloader import Downloader, first_reachable_url
 ##########################################################################
 
 # GLODAPv3.2026 master file constants
@@ -44,7 +43,7 @@ class DownloaderGLODAP(Downloader):
     subsequent conversion by ConverterGLODAP.
 
     The destination directory is resolved from the config dict /
-    config.yaml, mirroring the pattern used by ConverterGLODAP and
+    datasets.yaml, mirroring the pattern used by ConverterGLODAP and
     DownloaderURLList.
 
     The GEOMAR mirror serves the CSV wrapped in a zip archive. The
@@ -75,7 +74,7 @@ class DownloaderGLODAP(Downloader):
         ---------
         config    : configuration dictionary. Must contain at least
                     'db' (='GLODAP') and 'db_type' ('PHY' or 'BGC').
-                    Any key not supplied is read from config.yaml.
+                    Any key not supplied is read from datasets.yaml.
                     The resolved 'input_path' is used as the download
                     destination (set by the base Downloader).
         fname     : filename to save on disk.
@@ -88,7 +87,7 @@ class DownloaderGLODAP(Downloader):
                 'db_type': 'PHY',
             }
 
-        # base class resolves input_path from config + config.yaml and
+        # base class resolves input_path from config + datasets.yaml and
         # creates the directory if needed
         super().__init__(config)
 
@@ -116,7 +115,7 @@ class DownloaderGLODAP(Downloader):
         RuntimeError
             If no reachable URL is found.
         """
-        local_path = os.path.join(self.input_path, self.fname)
+        local_path = self.input_path / self.fname
 
         if self._is_already_downloaded(local_path):
             print(
@@ -130,7 +129,7 @@ class DownloaderGLODAP(Downloader):
 
         if url == GLODAP_URL_GEOMAR:
             # GEOMAR serves a zip; download then extract via inherited method
-            zip_path = local_path + ".zip"
+            zip_path = local_path.with_name(local_path.name + ".zip")
             self._download_file(url, zip_path)
             self.unzip_file(zip_path)  # extracts and deletes the zip
         else:
@@ -155,18 +154,7 @@ class DownloaderGLODAP(Downloader):
         RuntimeError
             If all candidate URLs are unreachable.
         """
-        urls = [
-            GLODAP_URL_NCEI,
-            GLODAP_URL_GEOMAR,
-        ]
-        for url in urls:
-            try:
-                response = requests.head(url, timeout=5)
-                if response.ok:
-                    return url
-            except requests.RequestException:
-                pass
-        raise RuntimeError(f"None of the URLs are reachable: {urls}")
+        return first_reachable_url([GLODAP_URL_NCEI, GLODAP_URL_GEOMAR], timeout=5)
 
 ##########################################################################
 

@@ -5,14 +5,14 @@
 Add an entry to registry when a new converter is created.
 
 Each entry names a (converter, db_type) pair already exercised by
-tests/fixtures/, the config_cluster.yaml key to use for its dask_client, and
+tests/fixtures/, the dask_cluster.yaml key to use for its dask_client, and
 which output columns are derived via gsw (compared with
 numpy.testing.assert_allclose(atol=1e-10, rtol=1e-10)) rather than exact match.
 
 The three gsw-computed columns (ABS_SAL_COMPUTED/CONSERVATIVE_TEMP_COMPUTED/
 SIGMA1_COMPUTED, added by Converter.compute_derived_variables) and PRES (when
 computed from DEPTH with gsw) are checked with tolerance; golden tests should be
-run with add_derived_vars = True in config.yaml when possible (exception eg:
+run with add_derived_vars = True in datasets.yaml when possible (exception eg:
 OleanderXBT has no salinity measurement and derived variable cannot be
 estimated)
 
@@ -33,7 +33,7 @@ class GoldenTarget(NamedTuple):
     name: str                  # tests/golden/<name>/ directory
     converter_cls: Type
     db_type: str                # "PHY" or "BGC"
-    cluster_key: str            # key into config_cluster_tests.yaml
+    cluster_key: str            # key into tests/config/dask_cluster.yaml
     tolerant_columns: List[str] # compared with atol=1e-10, rtol=1e-10; all others exact
     # SprayGliders only: it has no convert() override, so the base class's
     # generic convert() would try to read straight from tmp_path -- it needs
@@ -69,12 +69,12 @@ GOLDEN_REGISTRY = [
 class DataTarget(NamedTuple):
     """A parquet dataset tests/test_data.py reads.
 
-    Unlike GoldenTarget, output goes to the config.yaml-declared outdir_pq
+    Unlike GoldenTarget, output goes to the datasets.yaml-declared outdir_pq
     (tests/fixtures/parquet/, gitignored) because test_data.py resolves its
-    paths from config.yaml. conftest.generated_parquet builds all of these
+    paths from datasets.yaml. conftest.generated_parquet builds all of these
     once per session, so CI has them and a local run never tests stale output.
     """
-    config_key: str                 # crocolaketools/config/config.yaml key
+    config_key: str                 # crocolaketools/config/datasets.yaml key
     db_type: str                    # "PHY" or "BGC"
     converter_cls: Optional[Type]   # None: built with daskTools, not a Converter
     chunk_profile: Optional[int] = None  # see GoldenTarget.chunk_profile

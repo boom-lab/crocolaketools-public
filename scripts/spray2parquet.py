@@ -10,8 +10,6 @@
 ##########################################################################
 import argparse
 import os
-import importlib.resources
-import yaml
 from warnings import simplefilter
 from datetime import datetime
 
@@ -21,6 +19,7 @@ import pandas as pd
 # ignore pandas "educational" performance warnings
 simplefilter(action="ignore", category=pd.errors.PerformanceWarning)
 from dask.distributed import Client, Lock
+from crocolaketools.config import config_paths as cfgp
 from crocolaketools.converter.converterSprayGliders import ConverterSprayGliders
 
 import functools
@@ -29,9 +28,7 @@ print = functools.partial(print, flush=True)
 
 def spray2parquet(spray_path=None, outdir_pqt=None, fname_pq=None, use_config_file=None):
 
-    config_path = importlib.resources.files("crocolaketools.config").joinpath("config_cluster.yaml")
-    config_cluster = yaml.safe_load(open(config_path))
-    client = Client(**config_cluster["SPRAY_GLIDERS"])
+    client = Client(**cfgp.get_config_cluster_db_dict("SPRAY_GLIDERS"))
 
     if not use_config_file:
         print("Using user-defined configuration")
@@ -49,7 +46,7 @@ def spray2parquet(spray_path=None, outdir_pqt=None, fname_pq=None, use_config_fi
         ConverterPHY = ConverterSprayGliders(config)
 
     else: # reads from file
-        print("Using configuration from config.yaml")
+        print("Using configuration from datasets.yaml")
         ConverterPHY = ConverterSprayGliders(db_type='phy')
 
     print("Creating temporary files...")
@@ -98,7 +95,7 @@ def spray2parquet(spray_path=None, outdir_pqt=None, fname_pq=None, use_config_fi
         ConverterBGC = ConverterSprayGliders(config)
 
     else: # reads from file
-        print("Using configuration from config.yaml")
+        print("Using configuration from datasets.yaml")
         ConverterBGC = ConverterSprayGliders(db_type='bgc')
 
 
@@ -133,7 +130,11 @@ def main():
     parser.add_argument("-f", help="Basename for output files", required=False, default="1200_PHY_SPRAY-DEV.parquet")
     parser.add_argument('--config', action='store_true', help="Use config files instead of parsing arguments", required=False, default=None)
 
+
+    cfgp.add_config_dir_argument(parser)
     args = parser.parse_args()
+
+    cfgp.apply_config_dir_argument(args)
 
     spray2parquet(args.i,args.o,args.f,args.config)
 

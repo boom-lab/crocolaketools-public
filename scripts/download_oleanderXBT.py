@@ -13,6 +13,7 @@
 import argparse
 from datetime import datetime
 
+from crocolaketools.config import config_paths as cfgp
 from crocolaketools.downloader.downloaderOleanderXBT import (
     OLEANDER_BASE_URL,
     DownloaderURLList,
@@ -37,12 +38,12 @@ def download_oleanderXBT(
     Arguments
     ---------
     config     : configuration dict passed to DownloaderURLList.
-                 If None, uses config.yaml defaults (triggered by --config flag).
+                 If None, uses datasets.yaml defaults (triggered by --config flag).
     url_file   : path to a text file containing one URL per line.
     start_year : first year to download (inclusive).
     end_year   : last year to download (inclusive).
     base_url   : ERDDAP base URL for OleanderXBT.
-    save_to    : directory to save downloaded files. If None, uses config.yaml.
+    save_to    : directory to save downloaded files. If None, uses datasets.yaml.
     threads    : number of parallel download threads.
     dryrun     : if True, print summary without downloading.
     overwrite  : if True, re-download files already present.
@@ -137,11 +138,13 @@ def main():
         action='store_true',
         default=False,
         help=(
-            'Use config.yaml defaults for input_path. '
+            'Use datasets.yaml defaults for input_path. '
             'Can be combined with --start_year and --end_year to filter years.'
         ),
     )
+    cfgp.add_config_dir_argument(parser)
     args = parser.parse_args()
+    cfgp.apply_config_dir_argument(args)
 
     config = None if args.config else {'db': 'OleanderXBT', 'db_type': 'PHY'}
 

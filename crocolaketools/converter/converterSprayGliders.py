@@ -8,7 +8,6 @@
 ## @date Tue 04 Feb 2025
 
 ##########################################################################
-import glob
 import os
 import warnings
 import dask
@@ -16,6 +15,7 @@ import dask.dataframe as dd
 from dask.distributed import Lock
 import gsw
 import numpy as np
+from pathlib import Path
 import pandas as pd
 import pyarrow as pa
 import pyarrow.parquet as pq
@@ -23,6 +23,9 @@ import xarray as xr
 from crocolaketools import db_params
 from crocolaketools.converter.converter import Converter
 ##########################################################################
+
+#: Profiles per netCDF chunk when datasets.yaml does not say.
+DEFAULT_CHUNK_PROFILE = 5000
 
 class ConverterSprayGliders(Converter):
 
@@ -47,6 +50,9 @@ class ConverterSprayGliders(Converter):
 
         Converter.__init__(self, config)
 
+        # Converter.__init__ fills config from datasets.yaml, so read after it
+        self.chunk_profile = config.get("chunk_profile", DEFAULT_CHUNK_PROFILE)
+
     # ------------------------------------------------------------------ #
     # Methods                                                            #
     # ------------------------------------------------------------------ #
@@ -64,16 +70,15 @@ class ConverterSprayGliders(Converter):
         """
 
         tmp_path = self.tmp_path
-        if not os.path.exists(tmp_path):
-            os.makedirs(tmp_path, exist_ok=True)
-        else:
+        if tmp_path.exists():
             raise ValueError(f"Temporary path {tmp_path} already exists. Please remove it before proceeding.")
+        tmp_path.mkdir(parents=True)
 
         if lock is None:
             warnings.warn("No lock provided. This might lead to concurrency or segmentation fault errors.")
 
         if flist is None:
-            flist = os.listdir(self.input_path)
+            flist = [p.name for p in self.input_path.iterdir()]
             print("List of files not provided, guessing from input path: ", self.input_path)
 
         print("List of files to process: ", flist)
@@ -92,6 +97,8 @@ class ConverterSprayGliders(Converter):
         Arguments:
         filename -- file name, excluding relative path
         lock -- dask lock to use for concurrency
+        chunk_profile -- profiles per chunk
+                         (default: chunk_profile in datasets.yaml, else 5000)
         """
 
         input_fname = self.input_path / filename
@@ -99,7 +106,7 @@ class ConverterSprayGliders(Converter):
 
         # chunking is empirical to force small chunks
         if chunk_profile is None:
-            chunk_profile = 5000
+            chunk_profile = self.chunk_profile
         chunk_depth = -1
         chunk_trajectory = -1
         chunk_dict = {
@@ -150,7 +157,7 @@ class ConverterSprayGliders(Converter):
         """
 
         chunk_filename = f'{filename[:-3]}_chunk_{j}.nc'
-        chunk_filepath = os.path.join(tmp_path, chunk_filename)
+        chunk_filepath = Path(tmp_path) / chunk_filename
 
         # acquire lock to avoid concurrency issues on ds
         lock.acquire(timeout=600)
@@ -237,7 +244,7 @@ class ConverterSprayGliders(Converter):
         if path is None:
             path = self.tmp_path
 
-        input_fname = path + filename
+        input_fname = Path(path) / filename
         print("Reading file: ", input_fname)
 
         if lock is not None:
@@ -350,11 +357,11 @@ class ConverterSprayGliders(Converter):
 
         if self.tmp_path is not None:
             warnings.warn(f"The temporary folder {self.tmp_path} is being deleted.")
-            tmp_to_remove = glob.glob(self.tmp_path+"*")
+            tmp_to_remove = sorted(self.tmp_path.glob("*"))
             print("removing files:")
             print(tmp_to_remove)
             for f in tmp_to_remove:
-                os.remove(f)
+                f.unlink()
             os.removedirs(self.tmp_path)
 
 

@@ -1,3 +1,5 @@
+# TEMPLATE -- see datasets.example.yaml for how to use it.
+#
 # This config file contains the fields for the config_hpc dictionary used by the
 # scripts in the script folder.
 # Field names must be arguments to dask's LocalCluster Client
@@ -5,6 +7,18 @@
 
 
 # Argo
+ARGO-GDAC_PHY:
+    threads_per_worker: 1
+    n_workers: 18
+    memory_limit: '5.5GB'
+    processes: True
+
+ARGO-GDAC_BGC:
+    threads_per_worker: 1
+    n_workers: 9
+    memory_limit: '11GB'
+    processes: True
+
 ARGO-QC_PHY:
     threads_per_worker: 1
     n_workers: 4

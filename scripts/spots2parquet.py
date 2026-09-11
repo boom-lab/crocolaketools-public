@@ -9,8 +9,6 @@
 
 ##########################################################################
 import argparse
-import importlib.resources
-import yaml
 from dask.distributed import Client
 
 
@@ -19,15 +17,14 @@ from warnings import simplefilter
 import pandas as pd
 # ignore pandas "educational" performance warnings
 simplefilter(action="ignore", category=pd.errors.PerformanceWarning)
+from crocolaketools.config import config_paths as cfgp
 from crocolaketools.converter.converterSPOTS import ConverterSPOTS
 ##########################################################################
 
 def spots2parquet(spots_path = None, spots_name = None, outdir_pqt_phy = None, outdir_pqt_bgc = None, fname_pq = None, use_config_file = None):
     """Convert SPOTS data to parquet format"""
 
-    config_path = importlib.resources.files("crocolaketools.config").joinpath("config_cluster.yaml")
-    config_cluster = yaml.safe_load(open(config_path))
-    client = Client(**config_cluster["SPOTS"])
+    client = Client(**cfgp.get_config_cluster_db_dict("SPOTS"))
     print("Dask client dashboard link:", client.dashboard_link)
 
     if not use_config_file:
@@ -45,7 +42,7 @@ def spots2parquet(spots_path = None, spots_name = None, outdir_pqt_phy = None, o
         ConverterPHY = ConverterSPOTS(config)
         
     else: # reads from file
-        print("Using configuration from config.yaml")
+        print("Using configuration from datasets.yaml")
         ConverterPHY = ConverterSPOTS(db_type = 'phy')
 
     ConverterPHY.convert()
@@ -66,7 +63,7 @@ def spots2parquet(spots_path = None, spots_name = None, outdir_pqt_phy = None, o
         ConverterBGC = ConverterSPOTS(config)
 
     else: # reads from file
-        print("Using configuration from config.yaml")
+        print("Using configuration from datasets.yaml")
         ConverterBGC = ConverterSPOTS(db_type = 'bgc')
 
     ConverterBGC.convert()
@@ -84,7 +81,11 @@ def main():
     parser.add_argument('-b', help = "Basename for output files", required = False, default = None)
     parser.add_argument('--config', action = 'store_true', help = "Use config files instead of parsing arguments", required = False, default = None)
 
+
+    cfgp.add_config_dir_argument(parser)
     args = parser.parse_args()
+
+    cfgp.apply_config_dir_argument(args)
 
     if args.b is None and args.n == "spots.csv":
         basename = args.n[:-4]

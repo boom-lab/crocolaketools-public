@@ -10,8 +10,6 @@
 ##########################################################################
 import argparse
 import os
-import importlib.resources
-import yaml
 from warnings import simplefilter
 from datetime import datetime
 
@@ -20,6 +18,7 @@ import pandas as pd
 # ignore pandas "educational" performance warnings
 simplefilter(action="ignore", category=pd.errors.PerformanceWarning)
 from dask.distributed import Client, Lock
+from crocolaketools.config import config_paths as cfgp
 from crocolaketools.converter.converterSaildrones import ConverterSaildrones
 
 import functools
@@ -28,9 +27,7 @@ print = functools.partial(print, flush=True)
 
 def saildrones2parquet(saildrones_path=None, outdir_pqt=None, fname_pq=None, use_config_file=None):
 
-    config_path = importlib.resources.files("crocolaketools.config").joinpath("config_cluster.yaml")
-    config_cluster = yaml.safe_load(open(config_path))
-    client = Client(**config_cluster["SAILDRONES"])
+    client = Client(**cfgp.get_config_cluster_db_dict("SAILDRONES"))
 
     if not use_config_file:
         print("Using user-defined configuration")
@@ -48,7 +45,7 @@ def saildrones2parquet(saildrones_path=None, outdir_pqt=None, fname_pq=None, use
         ConverterPHY = ConverterSaildrones(config)
 
     else: # reads from file
-        print("Using configuration from config.yaml")
+        print("Using configuration from datasets.yaml")
         ConverterPHY = ConverterSaildrones(db_type='phy')
     print("Converting PHY files to parquet...")
     ConverterPHY.convert()
@@ -78,7 +75,7 @@ def saildrones2parquet(saildrones_path=None, outdir_pqt=None, fname_pq=None, use
         ConverterBGC = ConverterSaildrones(config)
 
     else: # reads from file
-        print("Using configuration from config.yaml")
+        print("Using configuration from datasets.yaml")
         ConverterBGC = ConverterSaildrones(db_type='bgc')
 
     print("Converting BGC files to parquet...")
@@ -99,7 +96,11 @@ def main():
     parser.add_argument("-f", help="Basename for output files", required=False, default="demo_SAILDRONES.parquet")
     parser.add_argument('--config', action='store_true', help="Use config files instead of parsing arguments", required=False, default=None)
 
+
+    cfgp.add_config_dir_argument(parser)
     args = parser.parse_args()
+
+    cfgp.apply_config_dir_argument(args)
 
     saildrones2parquet(args.i, args.o, args.f, args.config)
 

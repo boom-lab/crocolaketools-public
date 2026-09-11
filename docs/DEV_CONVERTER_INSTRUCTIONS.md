@@ -117,7 +117,7 @@ Documentation findings:
 Implementation requirements:
 - Add <SCRIPT NAME> in scripts/.
 - Update db_names.py and db_params.py.
-- Update config.yaml and config_cluster.yaml.
+- Update datasets.yaml and dask_cluster.yaml.
 - Ensure generate_crocolake_symlinks.sh includes the outputs.
 - Add converter tests and source-to-Parquet integrity tests.
 - Preserve or account for these existing changes: <DETAILS>.
@@ -163,7 +163,7 @@ Documentation findings:
 Implementation requirements:
 - Add scripts/spots2parquet.py.
 - Complete ConverterSPOTS.
-- Update db_names.py, db_params.py, config.yaml, and config_cluster.yaml.
+- Update db_names.py, db_params.py, datasets.yaml, and dask_cluster.yaml.
 - Verify that configured SPOTS PHY/BGC directories are symlinked into CrocoLake.
 - Add converter tests and data-integrity tests.
 

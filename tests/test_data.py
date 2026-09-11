@@ -49,7 +49,7 @@ CONVERTER_CLASSES = {
 }
 
 
-# cached: constructing a converter reads config.yaml, and this is called once per loop iteration
+# cached: constructing a converter reads datasets.yaml, and this is called once per loop iteration
 @functools.lru_cache(maxsize=None)
 def registered_unit_conversions(db_name, db_type):
     """Unit conversions a converter registers, keyed by CrocoLake column."""
@@ -298,7 +298,7 @@ class TestData:
         Arguments:
         db_name   --  database name as in params.py
         db_type   --  phy or bgc
-        db_name_config  -- database name as in config.yaml if different from db_name
+        db_name_config  -- database name as in datasets.yaml if different from db_name
         nc_pattern      -- specific file name patterns for original netCDF files
 
         """

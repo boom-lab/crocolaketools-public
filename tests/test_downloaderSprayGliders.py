@@ -123,8 +123,8 @@ class TestSprayDownload:
     def test_skips_existing_files(self, tmp_path, capsys, mock_base_downloader):
         """No HTTP request made when files exist and overwrite=False."""
         d = DownloaderSprayGliders(fnames={"CORC.nc": "binnedCORC/CORC.nc"}, overwrite=False)
-        d.input_path = str(tmp_path) + "/"
-        existing = os.path.join(d.input_path, "CORC.nc")
+        d.input_path = tmp_path
+        existing = d.input_path / "CORC.nc"
         with open(existing, "wb") as fh:
             fh.write(b"data")
  
@@ -139,8 +139,8 @@ class TestSprayDownload:
     def test_downloads_missing_file(self, tmp_path, mock_base_downloader):
         """File is downloaded when not already present."""
         d = DownloaderSprayGliders(fnames={"CORC.nc": "binnedCORC/CORC.nc"})
-        d.input_path = str(tmp_path) + "/"
-        expected_path = os.path.join(d.input_path, "CORC.nc")
+        d.input_path = tmp_path
+        expected_path = d.input_path / "CORC.nc"
         expected_url = f"{SPRAY_BASE_URL}/binnedCORC/CORC.nc"
 
         with patch.object(
@@ -156,8 +156,8 @@ class TestSprayDownload:
         """spray_download returns local_path for each file correctly."""
         fnames = {"CORC.nc": "binnedCORC/CORC.nc", "GulfStream.nc": "binnedGS/GulfStream.nc"}
         d = DownloaderSprayGliders(fnames=fnames)
-        d.input_path = str(tmp_path) + "/"
-        expected_paths = [os.path.join(d.input_path, f) for f in fnames]
+        d.input_path = tmp_path
+        expected_paths = [d.input_path / f for f in fnames]
 
         with patch.object(
             DownloaderSprayGliders, "_check_url_reachable",
@@ -170,8 +170,8 @@ class TestSprayDownload:
     def test_overwrite_triggers_redownload(self, tmp_path, mock_base_downloader):
         """Existing file is re-downloaded when overwrite=True."""
         d = DownloaderSprayGliders(fnames={"CORC.nc": "binnedCORC/CORC.nc"}, overwrite=True)
-        d.input_path = str(tmp_path) + "/"
-        existing = os.path.join(d.input_path, "CORC.nc")
+        d.input_path = tmp_path
+        existing = d.input_path / "CORC.nc"
         with open(existing, "wb") as fh:
             fh.write(b"old data")
  
@@ -186,7 +186,7 @@ class TestSprayDownload:
         """Unreachable URL is skipped with a warning instead of raising."""
         import warnings
         d = DownloaderSprayGliders(fnames={"CORC.nc": "binnedCORC/CORC.nc"})
-        d.input_path = str(tmp_path) + "/"
+        d.input_path = tmp_path
  
         with patch.object(
             DownloaderSprayGliders, "_check_url_reachable",
@@ -205,7 +205,7 @@ class TestSprayDownload:
  
 @pytest.fixture
 def mock_base_downloader():
-    """Patch Downloader.__init__ so tests don't need config.yaml or
+    """Patch Downloader.__init__ so tests don't need datasets.yaml or
     crocolakeloader.params to be installed."""
     with patch(
         "crocolaketools.downloader.downloaderSprayGliders.Downloader.__init__",

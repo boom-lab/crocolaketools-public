@@ -11,17 +11,16 @@
 ## @date Tue 11 Feb 2025
 
 ##########################################################################
-import importlib.resources
 import logging
-import os
 import shutil
 import warnings
 import zipfile
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from pathlib import Path
+from typing import Union
 from urllib.parse import urlparse
  
 import requests
-import yaml
 from tqdm import tqdm
 
 from crocolaketools import db_names
@@ -29,6 +28,28 @@ from crocolaketools.config import config_paths as cfgp
 ##########################################################################
  
  
+def first_reachable_url(urls, timeout=10):
+    """Return the first URL in urls that answers a HEAD request.
+
+    Arguments:
+        urls    -- candidate URLs, tried in order
+        timeout -- seconds to wait for each candidate
+
+    Raises RuntimeError if none of them answer, so a caller never starts a
+    download against a dead host.
+    """
+    for url in urls:
+        try:
+            response = requests.head(url, timeout=timeout, allow_redirects=True)
+        except requests.RequestException as e:
+            print(f"{url} is unreachable ({e}), trying the next one.")
+            continue
+        if response.ok:
+            return url
+        print(f"{url} returned status {response.status_code}, trying the next one.")
+    raise RuntimeError(f"None of the URLs are reachable: {list(urls)}")
+
+
 class Downloader:
  
     """class Downloader: common facilities to configure downloads for different
@@ -46,7 +67,7 @@ class Downloader:
  
         config -- configuration dictionary. Must contain at least 'db' and
                   'db_type'. If any value is not specified, defaults in
-                  config.yaml are used; user-provided values override them.
+                  datasets.yaml are used; user-provided values override them.
  
         Relevant fields used by Downloader implementations:
         db            -- database name (e.g., 'OleanderXBT')
@@ -63,7 +84,6 @@ class Downloader:
         db = config['db']
         db_type = config['db_type'].upper()
  
-        base_path = cfgp.get_config_path()
         config_disk = cfgp.get_config_paths_db_dict(db + "_" + db_type)
  
         config_user_keys = list(config.keys())
@@ -101,13 +121,11 @@ class Downloader:
         elif db is not None:
             raise ValueError("Database type db_type not a string.")
  
-        input_path = os.path.abspath(os.path.join(base_path, config["input_path"]))
-        if input_path[-1] != "/":
-            input_path = input_path + "/"
+        input_path = cfgp.resolve_config_path(config["input_path"])
         # Ensure destination exists for downloads
-        os.makedirs(input_path, exist_ok=True)
+        input_path.mkdir(parents=True, exist_ok=True)
         self.input_path = input_path
-        print("Original files will be stored at " + self.input_path)
+        print("Original files will be stored at " + str(self.input_path))
  
         # Common download options -- subclasses may override these after
         # calling super().__init__() if they accept them as constructor args.
@@ -119,7 +137,7 @@ class Downloader:
     # Methods                                                            #
     # ------------------------------------------------------------------ #
  
-    def _is_already_downloaded(self, local_path: str) -> bool:
+    def _is_already_downloaded(self, local_path: Union[str, Path]) -> bool:
         """Return True if the file exists on disk and overwrite is False.
  
         Parameters
@@ -131,10 +149,10 @@ class Downloader:
         bool
             True if the file should be skipped (exists and overwrite=False).
         """
-        return (not self.overwrite) and os.path.isfile(local_path)
+        return (not self.overwrite) and Path(local_path).is_file()
  
     @staticmethod
-    def _download_file(url: str, local_path: str) -> None:
+    def _download_file(url: str, local_path: Union[str, Path]) -> None:
         """Stream url to local_path with a tqdm progress bar.
  
         Downloads to a temporary file first and renames it to local_path
@@ -153,13 +171,14 @@ class Downloader:
         requests.exceptions.RequestException
             Propagated from requests on any HTTP or connection error.
         """
-        tmp_path = local_path + ".tmp"
+        local_path = Path(local_path)
+        tmp_path = local_path.with_name(local_path.name + ".tmp")
         try:
             with requests.get(url, stream=True, timeout=120) as response:
                 response.raise_for_status()
                 total_size = int(response.headers.get("content-length", 0))
                 with open(tmp_path, "wb") as fh, tqdm(
-                    desc=os.path.basename(local_path),
+                    desc=local_path.name,
                     total=total_size,
                     unit="iB",
                     unit_scale=True,
@@ -168,14 +187,13 @@ class Downloader:
                     for chunk in response.iter_content(chunk_size=8192):
                         size = fh.write(chunk)
                         bar.update(size)
-            os.replace(tmp_path, local_path)
+            tmp_path.replace(local_path)
         except Exception:
-            if os.path.exists(tmp_path):
-                os.remove(tmp_path)
+            tmp_path.unlink(missing_ok=True)
             raise
  
     @staticmethod
-    def unzip_file(zip_path: str) -> None:
+    def unzip_file(zip_path: Union[str, Path]) -> None:
         """Extract a zip archive to its parent directory and delete the zip.
  
         Cleans up any __MACOSX metadata folder that macOS-created archives
@@ -185,16 +203,17 @@ class Downloader:
         ----------
         zip_path : path to the zip file to extract.
         """
-        extract_dir = os.path.dirname(zip_path)
+        zip_path = Path(zip_path)
+        extract_dir = zip_path.parent
         with zipfile.ZipFile(zip_path, "r") as zip_ref:
             zip_ref.extractall(extract_dir)
  
         # Remove __MACOSX metadata folder if present
-        macosx_path = os.path.join(extract_dir, "__MACOSX")
-        if os.path.exists(macosx_path) and os.path.isdir(macosx_path):
+        macosx_path = extract_dir / "__MACOSX"
+        if macosx_path.is_dir():
             shutil.rmtree(macosx_path)
  
-        os.remove(zip_path)
+        zip_path.unlink()
  
     def download_parallel(
         self,
@@ -234,7 +253,7 @@ class Downloader:
             total_bytes = 0
             rows = []
             for url, local_path in url_path_pairs:
-                already = os.path.isfile(local_path)
+                already = Path(local_path).is_file()
                 size_bytes = 0
                 size_str = "unknown"
                 try:
@@ -248,7 +267,7 @@ class Downloader:
                 status = "already exists, would skip" if already else "would download"
                 if not already:
                     total_bytes += size_bytes
-                rows.append((os.path.basename(local_path), size_str, status))
+                rows.append((Path(local_path).name, size_str, status))
  
             print("\nDry run summary:")
             for fname, size, status in rows:

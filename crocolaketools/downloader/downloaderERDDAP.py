@@ -11,13 +11,13 @@
 
 ################################################################################################
 import logging
-import os
 import shutil
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta, timezone
-from typing import Callable, List, Optional, Tuple
+from pathlib import Path
+from typing import Callable, List, Optional, Tuple, Union
 
 import pandas as pd
 import requests
@@ -117,7 +117,7 @@ class DownloaderERDDAP(Downloader):
         # if False, chunk requests fire without the first-byte gate (see NoOpGate)
         self.gated_parallel_download = config.get("gated_parallel_download", True)
 
-        # Optional user-defined constraints from config.yaml.
+        # Optional user-defined constraints from datasets.yaml.
         # Supports all 7 ERDDAP tabledap operators: =, !=, =~, <, <=, >, >=
         # time>= / time<= clamp the chunking window in _download_one.
         # All other constraints are passed to ERDDAP on every chunk request.
@@ -456,7 +456,7 @@ class DownloaderERDDAP(Downloader):
     def _download_file(
         self,
         url: str,
-        local_path: str,
+        local_path: Union[str, Path],
         on_first_byte: Optional[Callable[[], None]] = None,
     ) -> None:
         """
@@ -466,7 +466,8 @@ class DownloaderERDDAP(Downloader):
             first byte means the heavy work is done and the next chunk can start its
             build. Uses a .tmp file so an interrupted download never corrupts the output.
         """
-        tmp_path = local_path + ".tmp"
+        local_path = Path(local_path)
+        tmp_path = local_path.with_name(local_path.name + ".tmp")
         try:
             t0 = time.monotonic()
             bytes_written = 0
@@ -480,22 +481,21 @@ class DownloaderERDDAP(Downloader):
                             if on_first_byte is not None:
                                 on_first_byte()
                         bytes_written += fh.write(chunk)
-            os.replace(tmp_path, local_path)
+            tmp_path.replace(local_path)
             logging.info(
                 "%s: %.1f MiB in %.1fs.",
-                os.path.basename(local_path),
+                local_path.name,
                 bytes_written / 2**20,
                 time.monotonic() - t0,
             )
         except Exception:
-            if os.path.exists(tmp_path):
-                os.remove(tmp_path)
+            tmp_path.unlink(missing_ok=True)
             raise
 
     def _download_file_with_retry(
         self,
         url: str,
-        local_path: str,
+        local_path: Union[str, Path],
         on_first_byte: Optional[Callable[[], None]] = None,
     ) -> None:
         """
@@ -533,7 +533,7 @@ class DownloaderERDDAP(Downloader):
 
         raise last_exc
 
-    def _download_one(self, dataset_id: str, local_path: str) -> bool:
+    def _download_one(self, dataset_id: str, local_path: Union[str, Path]) -> bool:
         """
             Download one dataset to `local_path` using parallel chunking.
         """
@@ -584,15 +584,15 @@ class DownloaderERDDAP(Downloader):
                 t_start.date(), t_end.date(),
             )
 
-            tmp_dir = os.path.join(self.input_path, TMP_CHUNKS_DIR, dataset_id)
-            os.makedirs(tmp_dir, exist_ok=True)
+            tmp_dir = self.input_path / TMP_CHUNKS_DIR / dataset_id
+            tmp_dir.mkdir(parents=True, exist_ok=True)
 
             try:
                 ok, got_413 = self._download_chunks_parallel(
                     dataset_id, windows, tmp_dir, local_path
                 )
             finally:
-                if os.path.exists(tmp_dir):
+                if tmp_dir.is_dir():
                     shutil.rmtree(tmp_dir)
 
             if ok:
@@ -615,8 +615,8 @@ class DownloaderERDDAP(Downloader):
         self,
         dataset_id: str,
         windows: List[Tuple[datetime, datetime]],
-        tmp_dir: str,
-        local_path: str,
+        tmp_dir: Union[str, Path],
+        local_path: Union[str, Path],
     ) -> Tuple[bool, bool]:
         """
             Download `windows` as parallel chunks using a first-byte gate.
@@ -626,9 +626,7 @@ class DownloaderERDDAP(Downloader):
         """
         chunk_jobs = []
         for i, (ws, we) in enumerate(windows):
-            chunk_path = os.path.join(
-                tmp_dir, f"{dataset_id}_chunk_{i:04d}.parquet"
-            )
+            chunk_path = Path(tmp_dir) / f"{dataset_id}_chunk_{i:04d}.parquet"
             url = self._safe_get_url(dataset_id, time_start=ws, time_end=we)
             if url is not None:
                 chunk_jobs.append((chunk_path, url))
@@ -649,7 +647,7 @@ class DownloaderERDDAP(Downloader):
         # each outcome is logged here, in the worker thread, at the moment it
         # happens; the as_completed loop below only tallies results, so log
         # timestamps reflect the actual event times.
-        def _worker(url: str, path: str, on_gate_release: Callable) -> None:
+        def _worker(url: str, path: Path, on_gate_release: Callable) -> None:
             try:
                 self._download_file_with_retry(
                     url, path, on_first_byte=on_gate_release
@@ -659,20 +657,20 @@ class DownloaderERDDAP(Downloader):
                 if status == 404:
                     logging.info(
                         "%s: empty window (404, no data) - skipped.",
-                        os.path.basename(path),
+                        path.name,
                     )
                 elif status == 413:
                     logging.warning(
                         "%s: returned 413 - need smaller chunks.",
-                        os.path.basename(path),
+                        path.name,
                     )
                 else:
                     logging.error(
-                        "%s: failed: %s", os.path.basename(path), exc
+                        "%s: failed: %s", path.name, exc
                     )
                 raise
             except Exception as exc:
-                logging.error("%s: failed: %s", os.path.basename(path), exc)
+                logging.error("%s: failed: %s", path.name, exc)
                 raise
             finally:
                 on_gate_release()
@@ -742,8 +740,8 @@ class DownloaderERDDAP(Downloader):
 
     def _merge_chunks(
         self,
-        chunk_files: List[str],
-        local_path: str,
+        chunk_files: List[Path],
+        local_path: Union[str, Path],
         dataset_id: str,
     ) -> bool:
         """
@@ -827,7 +825,7 @@ class DownloaderERDDAP(Downloader):
             )
             return None
 
-    def _local_path(self, dataset_id: str) -> str:
+    def _local_path(self, dataset_id: str) -> Path:
         """
             Return the local file path for `dataset_id`.
             Subclasses override to set filename and extension.
@@ -853,13 +851,13 @@ class DownloaderERDDAP(Downloader):
         return windows
 
     @staticmethod
-    def _local_timestamp(local_path: str) -> Optional[datetime]:
+    def _local_timestamp(local_path: Union[str, Path]) -> Optional[datetime]:
         """
             Return filesystem mtime as UTC datetime, or None.
         """
-        if not os.path.isfile(local_path):
+        local_path = Path(local_path)
+        if not local_path.is_file():
             return None
-        mtime = os.path.getmtime(local_path)
-        return datetime.fromtimestamp(mtime, tz=timezone.utc)
+        return datetime.fromtimestamp(local_path.stat().st_mtime, tz=timezone.utc)
 
 ################################################################################################

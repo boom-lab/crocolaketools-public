@@ -243,7 +243,7 @@ The script should:
 
 - support `--config`;
 - support explicit input/output arguments where appropriate;
-- create a Dask client from `config_cluster.yaml`;
+- create a Dask client from `dask_cluster.yaml`;
 - convert PHY and BGC outputs when the source contains both;
 - use the configured converter for config mode;
 - shut down the Dask client;
@@ -253,7 +253,7 @@ The script should:
 ## 6. Update configuration
 
 Add `<DB>_PHY` and `<DB>_BGC` entries to
-`crocolaketools/config/config.yaml` when both variants exist. Include:
+`datasets.yaml` (the template `crocolaketools/config/datasets.example.yaml`, and `tests/config/datasets.yaml`) when both variants exist. Include:
 
 - `db`;
 - `db_type`;
@@ -266,7 +266,7 @@ Add `<DB>_PHY` and `<DB>_BGC` entries to
 - `tmp_path` where needed.
 
 Add a suitable Dask profile to
-`crocolaketools/config/config_cluster.yaml`.
+`dask_cluster.yaml` (the template `crocolaketools/config/dask_cluster.example.yaml`, and `tests/config/dask_cluster.yaml`).
 
 Use paths and names consistent with the existing demo datasets.
 
@@ -344,7 +344,7 @@ completion based only on output directories being created.
 - [ ] Dask operations use partition-aware functions.
 - [ ] Converter script follows existing style.
 - [ ] CLI entry point is registered.
-- [ ] `config.yaml` and `config_cluster.yaml` are updated.
+- [ ] `datasets.yaml` and `dask_cluster.yaml` are updated.
 - [ ] Symlink generation includes the new outputs.
 - [ ] Converter tests and source-to-Parquet integrity tests exist.
 - [ ] Demo conversion and targeted validation completed.
@@ -387,5 +387,5 @@ When implementing a converter, consult these files directly:
 - Converter behavior tests:
   `crocolaketools/test/test_converter.py`
 - Dataset and Dask configuration:
-  `crocolaketools/config/config.yaml`
-  and `crocolaketools/config/config_cluster.yaml`
+  `datasets.yaml` (the template `crocolaketools/config/datasets.example.yaml`, and `tests/config/datasets.yaml`)
+  and `dask_cluster.yaml` (the template `crocolaketools/config/dask_cluster.example.yaml`, and `tests/config/dask_cluster.yaml`)

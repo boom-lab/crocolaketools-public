@@ -10,6 +10,7 @@
 ##########################################################################
 import os
 import zipfile
+from pathlib import Path
 from unittest.mock import MagicMock, patch, call
 
 import pytest
@@ -23,7 +24,7 @@ from crocolaketools.downloader.downloaderGLODAP import (
 )
 ##########################################################################
 
-# Minimal config used across tests -- base class reads the rest from config.yaml
+# Minimal config used across tests -- base class reads the rest from datasets.yaml
 DUMMY_CONFIG = {'db': 'GLODAP', 'db_type': 'PHY'}
 
 
@@ -174,7 +175,7 @@ class TestGetUrl:
         mock_resp = MagicMock()
         mock_resp.ok = True
 
-        with patch("crocolaketools.downloader.downloaderGLODAP.requests.head",
+        with patch("crocolaketools.downloader.downloader.requests.head",
                    return_value=mock_resp):
             url = d.get_url()
         assert url == GLODAP_URL_NCEI
@@ -183,14 +184,14 @@ class TestGetUrl:
         """Falls back to GEOMAR URL when NCEI raises RequestException."""
         d = DownloaderGLODAP()
 
-        def head_side_effect(url, timeout):
+        def head_side_effect(url, **kwargs):
             if url == GLODAP_URL_NCEI:
                 raise requests.RequestException("NCEI down")
             mock_resp = MagicMock()
             mock_resp.ok = True
             return mock_resp
 
-        with patch("crocolaketools.downloader.downloaderGLODAP.requests.head",
+        with patch("crocolaketools.downloader.downloader.requests.head",
                    side_effect=head_side_effect):
             url = d.get_url()
         assert url == GLODAP_URL_GEOMAR
@@ -199,7 +200,7 @@ class TestGetUrl:
         """RuntimeError raised when all URLs are unreachable."""
         d = DownloaderGLODAP()
 
-        with patch("crocolaketools.downloader.downloaderGLODAP.requests.head",
+        with patch("crocolaketools.downloader.downloader.requests.head",
                    side_effect=requests.RequestException("all down")):
             with pytest.raises(RuntimeError, match="None of the URLs are reachable"):
                 d.get_url()
@@ -211,8 +212,8 @@ class TestGLODAPDownload:
     def test_skips_if_already_downloaded(self, tmp_path, capsys, mock_base_downloader):
         """No HTTP request made when file exists and overwrite=False."""
         d = DownloaderGLODAP(overwrite=False)
-        d.input_path = str(tmp_path) + "/"
-        existing = os.path.join(d.input_path, GLODAP_MASTER_FNAME)
+        d.input_path = tmp_path
+        existing = d.input_path / GLODAP_MASTER_FNAME
         with open(existing, "w") as fh:
             fh.write("cruise,station\n")
 
@@ -220,15 +221,15 @@ class TestGLODAPDownload:
             result = d.glodap_download()
             mock_dl.assert_not_called()
 
-        assert result == existing
+        assert result == Path(existing)
         captured = capsys.readouterr()
         assert "already present" in captured.out
 
     def test_downloads_from_ncei_url(self, tmp_path, mock_base_downloader):
         """File is downloaded directly when get_url() returns NCEI."""
         d = DownloaderGLODAP()
-        d.input_path = str(tmp_path) + "/"
-        expected_path = os.path.join(d.input_path, GLODAP_MASTER_FNAME)
+        d.input_path = tmp_path
+        expected_path = d.input_path / GLODAP_MASTER_FNAME
 
         with patch.object(DownloaderGLODAP, "get_url", return_value=GLODAP_URL_NCEI), \
              patch.object(DownloaderGLODAP, "_download_file") as mock_dl:
@@ -240,9 +241,9 @@ class TestGLODAPDownload:
     def test_downloads_and_unzips_from_geomar(self, tmp_path, mock_base_downloader):
         """Zip is downloaded and unzipped when get_url() returns GEOMAR."""
         d = DownloaderGLODAP()
-        d.input_path = str(tmp_path) + "/"
-        zip_path = os.path.join(d.input_path, GLODAP_MASTER_FNAME + ".zip")
-        expected_path = os.path.join(d.input_path, GLODAP_MASTER_FNAME)
+        d.input_path = tmp_path
+        zip_path = d.input_path / (GLODAP_MASTER_FNAME + ".zip")
+        expected_path = d.input_path / GLODAP_MASTER_FNAME
         with patch.object(DownloaderGLODAP, "get_url", return_value=GLODAP_URL_GEOMAR), \
              patch.object(DownloaderGLODAP, "_download_file") as mock_dl, \
              patch.object(DownloaderGLODAP, "unzip_file") as mock_unzip:
@@ -254,8 +255,8 @@ class TestGLODAPDownload:
     def test_overwrite_triggers_redownload(self, tmp_path, mock_base_downloader):
         """Existing file is re-downloaded when overwrite=True."""
         d = DownloaderGLODAP(overwrite=True)
-        d.input_path = str(tmp_path) + "/"
-        existing = os.path.join(d.input_path, GLODAP_MASTER_FNAME)
+        d.input_path = tmp_path
+        existing = d.input_path / GLODAP_MASTER_FNAME
         with open(existing, "w") as fh:
             fh.write("old data")
 
@@ -271,7 +272,7 @@ class TestGLODAPDownload:
 
 @pytest.fixture
 def mock_base_downloader():
-    """Patch Downloader.__init__ so tests don't need config.yaml or
+    """Patch Downloader.__init__ so tests don't need datasets.yaml or
     crocolakeloader.params to be installed."""
     with patch(
         "crocolaketools.downloader.downloaderGLODAP.Downloader.__init__",

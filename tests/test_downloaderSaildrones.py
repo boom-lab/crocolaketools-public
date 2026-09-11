@@ -8,8 +8,9 @@
 ## @date Thu 19 Mar 2026
 
 ##########################################################################
-import os
+from pathlib import Path
 from unittest.mock import patch
+from urllib.parse import urlparse
 import pytest
 
 from crocolaketools.downloader.downloaderSaildrones import DownloaderSaildrones, SAILDRONES_URLS
@@ -42,11 +43,11 @@ class TestSaildronesDownloadMethod:
     def test_saildrones_download_overwrite(self, mock_download, mock_unzip, tmp_path):
         """Existing files are re-downloaded and extracted when overwrite=True."""
         dl = DownloaderSaildrones()
-        dl.input_path = str(tmp_path)
+        dl.input_path = tmp_path
         dl.overwrite = True
 
         url = SAILDRONES_URLS[0]
-        zip_fname = os.path.basename(url)
+        zip_fname = Path(urlparse(url).path).name
         nc_fname = zip_fname.replace('.nc_.zip', '.nc')
 
         # stage the extracted .nc, which is what the skip check actually tests
@@ -55,7 +56,7 @@ class TestSaildronesDownloadMethod:
         with patch("crocolaketools.downloader.downloaderSaildrones.SAILDRONES_URLS", [url]):
             dl.saildrones_download()
 
-        expected_zip = os.path.join(str(tmp_path), zip_fname)
+        expected_zip = tmp_path / zip_fname
         mock_download.assert_called_once_with(url, expected_zip)
         # unzip_file must be mocked too: _download_file is a mock, so no zip is
         # written, and a real unzip_file would raise into saildrones_download's
@@ -68,11 +69,11 @@ class TestSaildronesDownloadMethod:
     def test_saildrones_download_skip_existing(self, mock_download, mock_unzip, tmp_path):
         """An already-extracted .nc is skipped when overwrite=False."""
         dl = DownloaderSaildrones()
-        dl.input_path = str(tmp_path)
+        dl.input_path = tmp_path
         dl.overwrite = False
 
         url = SAILDRONES_URLS[0]
-        (tmp_path / os.path.basename(url).replace('.nc_.zip', '.nc')).touch()
+        (tmp_path / Path(urlparse(url).path).name.replace('.nc_.zip', '.nc')).touch()
 
         with patch("crocolaketools.downloader.downloaderSaildrones.SAILDRONES_URLS", [url]):
             dl.saildrones_download()

@@ -136,7 +136,7 @@ class TestDownload:
     def test_skips_existing_nc_files(self, tmp_path, mock_base_downloader):
         """No download attempted when .nc files already exist and overwrite=False."""
         d = DownloaderURLList(urls=DUMMY_URLS, overwrite=False)
-        d.base_dir = str(tmp_path) + "/"
+        d.base_dir = tmp_path
         # Create existing .nc file for 2022
         (tmp_path / "2022_data.nc").write_bytes(b"data")
 
@@ -151,21 +151,21 @@ class TestDownload:
     def test_downloads_all_when_nothing_present(self, tmp_path, mock_base_downloader):
         """All URLs are queued when no .nc files exist locally."""
         d = DownloaderURLList(urls=DUMMY_URLS)
-        d.base_dir = str(tmp_path) + "/"
+        d.base_dir = tmp_path
 
         with patch.object(DownloaderURLList, "download_parallel",
                           return_value=(2, 0)) as mock_parallel, \
              patch.object(DownloaderURLList, "unzip_file"):
             completed, failed = d.download()
             assert mock_parallel.call_args[0][0] == [
-                (DUMMY_URLS[0], os.path.join(d.base_dir, "2022_xbt_nc.zip")),
-                (DUMMY_URLS[1], os.path.join(d.base_dir, "2023_xbt_nc.zip")),
+                (DUMMY_URLS[0], d.base_dir / "2022_xbt_nc.zip"),
+                (DUMMY_URLS[1], d.base_dir / "2023_xbt_nc.zip"),
             ]
 
     def test_dryrun_skips_actual_download(self, tmp_path, mock_base_downloader):
         """Dryrun passes through to download_parallel without fetching files."""
         d = DownloaderURLList(urls=DUMMY_URLS, dryrun=True)
-        d.base_dir = str(tmp_path) + "/"
+        d.base_dir = tmp_path
 
         with patch.object(DownloaderURLList, "download_parallel",
                           return_value=(2, 0)) as mock_parallel:
@@ -176,7 +176,7 @@ class TestDownload:
     def test_overwrite_downloads_even_if_nc_exists(self, tmp_path, mock_base_downloader):
         """All URLs are queued even if .nc files exist when overwrite=True."""
         d = DownloaderURLList(urls=DUMMY_URLS, overwrite=True)
-        d.base_dir = str(tmp_path) + "/"
+        d.base_dir = tmp_path
         (tmp_path / "2022_data.nc").write_bytes(b"data")
 
         with patch.object(DownloaderURLList, "download_parallel",
@@ -189,13 +189,13 @@ class TestDownload:
     def test_unzip_called_for_each_downloaded_zip(self, tmp_path, mock_base_downloader):
         """unzip_file is called for each zip that was successfully downloaded."""
         d = DownloaderURLList(urls=[DUMMY_URLS[0]])
-        d.base_dir = str(tmp_path) + "/"
-        zip_path = os.path.join(d.base_dir, "2022_xbt_nc.zip")
+        d.base_dir = tmp_path
+        zip_path = d.base_dir / "2022_xbt_nc.zip"
 
         # Simulate zip file appearing after download
         with patch.object(DownloaderURLList, "download_parallel",
                           return_value=(1, 0)), \
-             patch("os.path.isfile", return_value=True), \
+             patch("pathlib.Path.is_file", return_value=True), \
              patch.object(DownloaderURLList, "unzip_file") as mock_unzip:
             d.download()
             mock_unzip.assert_called_once_with(zip_path)
@@ -208,7 +208,7 @@ class TestDownload:
 @pytest.fixture
 def mock_base_downloader():
     """Patch Downloader.__init__ and configure_logging so tests don't need
-    config.yaml or write log files to disk."""
+    datasets.yaml or write log files to disk."""
     with patch(
         "crocolaketools.downloader.downloaderOleanderXBT.Downloader.__init__",
         return_value=None,

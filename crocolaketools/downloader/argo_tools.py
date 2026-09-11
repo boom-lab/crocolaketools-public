@@ -3,11 +3,10 @@ from datetime import datetime, timedelta
 from dateutil.parser import parse as parsedate
 import requests
 import time
-import os
+from crocolaketools.downloader.downloader import first_reachable_url
 import pathlib
 from pathlib import Path
 import urllib3
-import shutil
 import numpy as np
 import pandas as pd
 from scipy import interpolate
@@ -33,6 +32,24 @@ root = '.'
 ##########################################################################
 
 # Function to download and parse GDAC synthetic profile index file
+#: GDAC mirrors, in the order they are tried.
+GDAC_MIRRORS = (
+    'https://data-argo.ifremer.fr/',
+    'https://www.usgodae.org/ftp/outgoing/argo/',
+)
+
+def get_gdac_url(mirrors=GDAC_MIRRORS, timeout=10):
+    """Return the root URL of the first reachable GDAC mirror.
+
+    Arguments:
+        mirrors: root URLs to try, in order
+        timeout: seconds to wait for each mirror's response
+
+    Raises RuntimeError if none of them answer, rather than letting the caller
+    start a download against a dead host.
+    """
+    return first_reachable_url(mirrors, timeout=timeout)
+
 def argo_gdac(gdac_path='./', dataset="bgc", lat_range=None,lon_range=None,start_date=None,end_date=None,sensors=None,floats=None,overwrite_profiles=False,skip_downloads=True,download_individual_profs=False,save_to=None,verbose=True,dryrun=False,dac_url_root=None,checktime=True, NPROC=1):
     """Downloads GDAC Sprof index file, then selects float profiles based on criteria.
       Either returns information on profiles and floats (if skip_downloads=True) or downloads them (if False).
@@ -90,13 +107,14 @@ def argo_gdac(gdac_path='./', dataset="bgc", lat_range=None,lon_range=None,start
     else:
         raise ValueError('Dataset variable must be set to bgc or phy.')
 
-    gdac_file = os.path.join(gdac_path, gdac_name)
-    if not os.path.isfile( gdac_file ):
-        print(gdac_name + ' not found in ' + gdac_path + '. Downloading it if dryrun set to false.')
-        Path(gdac_path).mkdir(parents = True, exist_ok = True)
+    gdac_path = Path(gdac_path)
+    gdac_file = gdac_path / gdac_name
+    if not gdac_file.is_file():
+        print(gdac_name + ' not found in ' + str(gdac_path) + '. Downloading it if dryrun set to false.')
+        gdac_path.mkdir(parents = True, exist_ok = True)
 
     if not dryrun:
-        gdac_url  = 'https://usgodae.org/pub/outgoing/argo/'
+        gdac_url  = get_gdac_url()
         args = (gdac_url,gdac_name,gdac_path,True,verbose,checktime,None)
         download_file(args)
 
@@ -165,14 +183,14 @@ def argo_gdac(gdac_path='./', dataset="bgc", lat_range=None,lon_range=None,start
     if not skip_downloads:
         downloaded_filenames = []
         if dac_url_root is None:
-            dac_url_root = 'https://usgodae.org/pub/outgoing/argo/dac/'
+            dac_url_root = get_gdac_url() + 'dac/'
 
         if download_individual_profs:
             for p_idx in gdac_index_subset.index:
                 filename = gdac_index_subset.loc[p_idx]['filename']
                 downloaded_filenames.append(filename)
                 if not dryrun: # it still returns the filename that would be downloaded
-                    filepath = os.path.join('dac',gdac_index_subset.loc[p_idx]['filepath'])
+                    filepath = 'dac/' + gdac_index_subset.loc[p_idx]['filepath']
                     localpath = Path('./gdac',filepath)
                     localpath.mkdir(parents= True, exist_ok= True)
                     args = (dac_url_root + gdac_index_subset.loc[p_idx]['filepath'], filename, save_to, overwrite_profiles, verbose, checktime, None)
@@ -192,8 +210,7 @@ def argo_gdac(gdac_path='./', dataset="bgc", lat_range=None,lon_range=None,start
                 filename = str(wmoids[f_idx]) + prof_ext
                 localpath = Path(save_to,wmoid_filepath)
                 localpath.mkdir(parents= True, exist_ok= True)
-                localpath = str(localpath) + '/'
-                local_filename = localpath + filename
+                local_filename = localpath / filename
                 all_local_fnames.append(local_filename)
                 if checktime:
                     if more_recent(local_filename, wmoids[f_idx], gdac_index_subset):
@@ -241,7 +258,7 @@ def argo_gdac(gdac_path='./', dataset="bgc", lat_range=None,lon_range=None,start
         if (not dryrun) and verbose: print("All requested files have been downloaded.")
 
         if dryrun:
-            existing_fnames = [path for path in all_local_fnames if os.path.exists(path)]
+            existing_fnames = [path for path in all_local_fnames if Path(path).exists()]
             if verbose:
                 print("Dryrun: no files are downloaded. The following files are"
                 " already on disk and this list will be returned:")
@@ -266,11 +283,11 @@ def download_profiles(df,gdac_root='https://www.usgodae.org/ftp/outgoing/argo/',
     downloaded_filenames = []
     for p_idx in df.index:
         filename = df.loc[p_idx]['filename']
-        filepath = os.path.join('dac',df.loc[p_idx]['filepath'])
+        filepath = 'dac/' + df.loc[p_idx]['filepath']
         localpath = Path(local_root,filepath)
         localpath.mkdir(parents= True, exist_ok= True)
         download_file(gdac_root+filepath,filename,
-                      save_to=str(localpath)+ '/',overwrite=overwrite,verbose=verbose,checktime=checktime)
+                      save_to=localpath,overwrite=overwrite,verbose=verbose,checktime=checktime)
         downloaded_filenames.append(filename)
     return downloaded_filenames
 
@@ -371,13 +388,13 @@ def download_file(args):
 
     if save_to is None:
         save_to = root
-    localfile = os.path.join(save_to,filename)
+    localfile = Path(save_to) / filename
     if verbose: print(rank_str + '>>>> Destination file: ' + str(localfile) + '.')
 
     try:
-        if os.path.exists(localfile):
+        if localfile.exists():
             if checktime:
-                current_file_time = datetime.fromtimestamp(os.path.getmtime(localfile))
+                current_file_time = datetime.fromtimestamp(localfile.stat().st_mtime)
                 new_file_time = get_time_url(url_path + filename)
                 tz = new_file_time.tzinfo
                 current_file_time = current_file_time.replace(tzinfo=tz).astimezone(tz)
@@ -398,8 +415,9 @@ def download_file(args):
             if verbose: print(rank_str + '>>> File ' + filename + ' returned 404 error during download (requested URL: ' + str(url_dl) + ').')
             return
 
-        with open(save_to+filename,'wb') as out_file:
-            shutil.copyfileobj(response.raw,out_file)
+        with open(localfile,'wb') as out_file:
+            for chunk in response.iter_content(chunk_size=None):
+                out_file.write(chunk)
             del response
         if verbose: print(rank_str + '>>> Successfully downloaded ' + filename + '.')
 
@@ -411,10 +429,11 @@ def download_file(args):
 # Return true if current profile collection on disk is more recent than all
 # single profiles in index file (for given wmoid)
 def more_recent(local_filename, wmoid, gdac_index_subset):
-    if os.path.exists(local_filename):
+    local_filename = Path(local_filename)
+    if local_filename.exists():
 
         try:
-            current_file_time = datetime.fromtimestamp(os.path.getmtime(local_filename))
+            current_file_time = datetime.fromtimestamp(local_filename.stat().st_mtime)
         except:
             # if date format is not correct, we will download the file anyways
             return

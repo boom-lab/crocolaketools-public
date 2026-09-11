@@ -12,6 +12,7 @@ import glob
 import importlib.resources
 import os
 import random
+from pathlib import Path
 from pprint import pprint
 import shutil
 terminal_width = shutil.get_terminal_size().columns
@@ -26,6 +27,7 @@ import pyarrow.parquet as pq
 import pytest
 import xarray as xr
 
+from crocolaketools.config import config_paths as cfgp
 from crocolaketools.converter.converterSprayGliders import ConverterSprayGliders
 from crocolaketools.converter.converterArgoQC import ConverterArgoQC
 from crocolaketools.converter.converterGLODAP import ConverterGLODAP
@@ -61,7 +63,7 @@ class TestConverter:
         """Test reading the unprefixed GLODAPv3 demo CSV."""
         converter = ConverterGLODAP(db_type="PHY")
         source = pd.read_csv(
-            os.path.join(converter.input_path, "demo_GLODAP.csv"),
+            converter.input_path / "demo_GLODAP.csv",
             nrows=100,
         ).convert_dtypes(dtype_backend="pyarrow")
         profiled = converter.add_profile_id(
@@ -90,7 +92,7 @@ class TestConverter:
         """Test that GLODAP QC flags retain only values flagged 0 or 2."""
         converter = ConverterGLODAP(db_type="BGC")
         source = pd.read_csv(
-            os.path.join(converter.input_path, "demo_GLODAP.csv"),
+            converter.input_path / "demo_GLODAP.csv",
             nrows=100,
         ).convert_dtypes(dtype_backend="pyarrow")
         df = converter.standardize_data(
@@ -696,7 +698,7 @@ class TestConverter:
             db_type="PHY",
         )
         converterPHY.outdir_pq = tmp_path / "parquet"
-        converterPHY.tmp_path = str(tmp_path / "tmp") + "/"
+        converterPHY.tmp_path = tmp_path / "tmp"
 
         pq_files = glob.glob(str(converterPHY.input_path / '*.parquet'))
         assert len(pq_files) > 0
@@ -716,7 +718,7 @@ class TestConverter:
             db_type="BGC",
         )
         converterBGC.outdir_pq = tmp_path / "parquet"
-        converterBGC.tmp_path = str(tmp_path / "tmp") + "/"
+        converterBGC.tmp_path = tmp_path / "tmp"
 
         pq_files = glob.glob(str(converterBGC.input_path / '*.parquet'))
         assert len(pq_files) > 0
@@ -1127,3 +1129,156 @@ class TestConverter:
             print(ddf["LONGITUDE"])
             pd.testing.assert_frame_equal(pdf, sol_df)
             pd.testing.assert_frame_equal(ddf, sol_df)
+
+
+####################################################################################################
+class TestConverterArgoGDACCluster:
+    """ConverterArgoGDAC.convert_dask_tools takes its sizing from dask_cluster.yaml.
+
+    The Client is patched out so these run without starting a cluster; the
+    conversion itself is covered by test_golden_argo_gdac.
+    """
+
+    @staticmethod
+    def _run(monkeypatch, **kwargs):
+        """Call convert_dask_tools with a stubbed Client and daskTools."""
+        import crocolaketools.converter.converterArgoGDAC as mod
+
+        calls = {"client_kwargs": None, "shutdown": 0, "chunk": None}
+
+        class FakeClient:
+            def __init__(self, **kw):
+                calls["client_kwargs"] = kw
+
+            def shutdown(self):
+                calls["shutdown"] += 1
+
+        class FakeDaskTools:
+            def __init__(self, **kw):
+                calls["chunk"] = kw["chunk"]
+
+            def convert_to_parquet(self):
+                pass
+
+        monkeypatch.setattr(mod, "Client", FakeClient)
+        monkeypatch.setattr(mod, "daskTools", FakeDaskTools)
+        monkeypatch.setattr(mod, "generateSchema",
+                            lambda outdir, db: type("S", (), {"schema_fname": Path(outdir) / "s"})())
+        mod.ConverterArgoGDAC.convert_dask_tools(
+            [["a.nc"], ["b.nc"]], [[], []], ["PHY"], "/tmp/out", "/tmp/schemas", **kwargs
+        )
+        return calls
+
+    def test_cluster_settings_come_from_config(self, monkeypatch):
+        calls = self._run(monkeypatch)
+        expected = cfgp.get_config_cluster_db_dict("ARGO-GDAC_PHY")
+        assert calls["client_kwargs"] == expected
+        assert calls["shutdown"] == 1
+
+    def test_cluster_key_overrides_the_default_key(self, monkeypatch):
+        calls = self._run(monkeypatch, cluster_key="TESTS")
+        assert calls["client_kwargs"] == cfgp.get_config_cluster_db_dict("TESTS")
+
+    def test_supplied_client_is_used_and_left_open(self, monkeypatch):
+        sentinel = object()
+        calls = self._run(monkeypatch, client=sentinel)
+        assert calls["client_kwargs"] is None
+        assert calls["shutdown"] == 0
+
+    def test_chunk_size_comes_from_config(self, monkeypatch):
+        calls = self._run(monkeypatch)
+        assert calls["chunk"] == cfgp.get_config_paths_db_dict("ARGO-GDAC_PHY")["chunk_size"]
+
+    def test_chunk_size_argument_wins(self, monkeypatch):
+        calls = self._run(monkeypatch, chunk_size=7)
+        assert calls["chunk"] == 7
+
+    def test_metadata_is_written_beside_the_dataset(self, monkeypatch, tmp_path):
+        """The GDAC index frame lands in <outdir>/metadata/.
+
+        Readers survive the extra directory because daskTools writes a
+        _metadata file, from which dask takes the file list.
+        """
+        import crocolaketools.converter.converterArgoGDAC as mod
+
+        class FakeDaskTools:
+            def __init__(self, **kw):
+                pass
+
+            def convert_to_parquet(self):
+                pass
+
+        monkeypatch.setattr(mod, "daskTools", FakeDaskTools)
+        monkeypatch.setattr(mod, "Client", lambda **kw: type("C", (), {"shutdown": lambda s: None})())
+        monkeypatch.setattr(mod, "generateSchema",
+                            lambda outdir, db: type("S", (), {"schema_fname": Path(outdir) / "s"})())
+        index = pd.DataFrame({"file": ["aoml/1/profiles/R1_001.nc"],
+                              "date_update": pd.to_datetime(["2026-01-01"])})
+        mod.ConverterArgoGDAC.convert_dask_tools(
+            [["a.nc"], []], [index, []], ["PHY"], tmp_path, tmp_path / "schemas",
+        )
+        written = tmp_path / "metadata" / "ArgoPHY_metadata.parquet"
+        assert written.is_file()
+        assert list(pd.read_parquet(written)["file"]) == ["aoml/1/profiles/R1_001.nc"]
+
+
+####################################################################################################
+class TestSprayGlidersChunkProfile:
+    """chunk_profile comes from datasets.yaml, overridable per call."""
+
+    def test_default_comes_from_config(self):
+        converter = ConverterSprayGliders(db_type="PHY")
+        expected = cfgp.get_config_paths_db_dict("SprayGliders_PHY")["chunk_profile"]
+        assert converter.chunk_profile == expected
+
+    def test_absent_from_config_falls_back_to_the_module_default(self, monkeypatch):
+        import crocolaketools.converter.converterSprayGliders as mod
+
+        real = cfgp.get_config_paths_db_dict
+
+        def without_chunk_profile(db_name):
+            cfg = dict(real(db_name))
+            cfg.pop("chunk_profile", None)
+            return cfg
+
+        monkeypatch.setattr(
+            "crocolaketools.config.config_paths.get_config_paths_db_dict",
+            without_chunk_profile,
+        )
+        assert ConverterSprayGliders(db_type="PHY").chunk_profile == mod.DEFAULT_CHUNK_PROFILE
+
+
+####################################################################################################
+class TestArgoGDACDownloadProcesses:
+    """nproc comes from datasets.yaml, not from a literal in the downloader."""
+
+    @staticmethod
+    def _capture(monkeypatch, **kwargs):
+        import crocolaketools.downloader.downloaderArgoGDAC as mod
+
+        seen = {}
+        monkeypatch.setattr(
+            mod.at, "argo_gdac",
+            lambda **kw: (seen.update(kw) or ([], pd.DataFrame(), [])),
+        )
+        mod.DownloaderArgoGDAC().argo_download("gdac", "out", ["PHY"], False, **kwargs)
+        return seen
+
+    def test_num_procs_comes_from_config(self, monkeypatch):
+        seen = self._capture(monkeypatch)
+        expected = cfgp.get_config_paths_db_dict("ARGO-GDAC_PHY")["num_procs"]
+        assert seen["NPROC"] == expected
+
+    def test_argument_wins_over_config(self, monkeypatch):
+        assert self._capture(monkeypatch, nproc=3)["NPROC"] == 3
+
+    def test_dryrun_forces_one_process(self, monkeypatch):
+        import crocolaketools.downloader.downloaderArgoGDAC as mod
+
+        seen = {}
+        monkeypatch.setattr(
+            mod.at, "argo_gdac",
+            lambda **kw: (seen.update(kw) or ([], pd.DataFrame(), [])),
+        )
+        mod.DownloaderArgoGDAC().argo_download("gdac", "out", ["PHY"], True, nproc=8)
+        assert seen["NPROC"] == 1

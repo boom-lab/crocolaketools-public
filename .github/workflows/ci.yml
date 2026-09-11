@@ -1,11 +1,13 @@
 # Note: including tests that are successful, ratcheting towards a full
-#       test-suite. Known coverage gaps: - argo_tools.py, downloaderArgoGDAC.py,
-#       converterArgoGDAC.py, converterSPOTS.py
+#       test-suite. Known coverage gaps: downloaderArgoGDAC.py, converterSPOTS.py
 
 name: CI
 
 on:
   push:
+    # branches only: a tag push is release.yml's job
+    branches:
+      - '**'
   pull_request:
     branches:
       - develop
@@ -36,7 +38,7 @@ jobs:
 
       - name: Run downloader and config-path tests
         run: |
-          pytest -ra --maxfail=1 --tb=short tests/test_downloader{GLODAP,IOOSGliders,OleanderXBT,SprayGliders,Saildrones}.py tests/test_config_paths.py
+          pytest -ra --maxfail=1 --tb=short tests/test_downloader{ArgoTools,GLODAP,IOOSGliders,OleanderXBT,SprayGliders,Saildrones}.py tests/test_config_paths.py
 
   tests-pip-converter:
     name: converter tests (pip, py=${{ matrix.python-version }})
@@ -145,7 +147,7 @@ jobs:
       - name: Run downloader and config-path tests
         shell: bash -l {0}
         run: |
-          pytest -ra --maxfail=1 --tb=short tests/test_downloader{GLODAP,IOOSGliders,OleanderXBT,SprayGliders,Saildrones}.py tests/test_config_paths.py
+          pytest -ra --maxfail=1 --tb=short tests/test_downloader{ArgoTools,GLODAP,IOOSGliders,OleanderXBT,SprayGliders,Saildrones}.py tests/test_config_paths.py
 
   tests-conda-converter:
     name: converter tests (conda, from environment.yml)

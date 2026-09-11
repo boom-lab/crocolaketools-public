@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import argparse
 
+from crocolaketools.config import config_paths as cfgp
 from crocolaketools.downloader.downloaderIOOSGliders import DownloaderIOOSGliders
 
 
@@ -17,8 +18,8 @@ def download_ioos_gliders(
     if config is None:
         config = {"db": "IOOS_GLIDERS", "db_type": "PHY"}
 
-    # only override config.yaml values if explicitly passed via CLI/API;
-    # None means "not set, let config.yaml decide"
+    # only override datasets.yaml values if explicitly passed via CLI/API;
+    # None means "not set, let datasets.yaml decide"
     if overwrite is not None:
         config["overwrite"] = overwrite
     if dryrun is not None:
@@ -36,14 +37,14 @@ def main():
     parser = argparse.ArgumentParser(
         description=(
             "Incrementally sync IOOS Glider DAC delayed-mode datasets from "
-            "gliders.ioos.us/erddap to the local path configured in config.yaml."
+            "gliders.ioos.us/erddap to the local path configured in datasets.yaml."
         )
     )
     parser.add_argument(
         "--config",
         action="store_true",
         default=False,
-        help="Use config.yaml defaults for server_url, input_path, and other settings.",
+        help="Use datasets.yaml defaults for server_url, input_path, and other settings.",
     )
     parser.add_argument(
         "--sync",
@@ -52,7 +53,7 @@ def main():
         dest="sync",
         help=(
             "Compare server timestamps against local files and re-download "
-            "updated datasets. Overrides sync setting in config.yaml."
+            "updated datasets. Overrides sync setting in datasets.yaml."
         ),
     )
     parser.add_argument(
@@ -75,15 +76,19 @@ def main():
         metavar="N",
         help=(
             "Number of parallel download threads. "
-            "If not set, uses the value from config.yaml (num_threads)."
+            "If not set, uses the value from datasets.yaml (num_threads)."
         ),
     )
 
+
+    cfgp.add_config_dir_argument(parser)
     args = parser.parse_args()
+
+    cfgp.apply_config_dir_argument(args)
 
     config = {"db": "IOOS_GLIDERS", "db_type": "PHY"}
 
-    # only pass flags that were explicitly set; don't override config.yaml
+    # only pass flags that were explicitly set; don't override datasets.yaml
     # with argparse defaults
     download_ioos_gliders(
         config=config,

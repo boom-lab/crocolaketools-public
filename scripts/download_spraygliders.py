@@ -12,6 +12,7 @@
 import argparse
 from datetime import datetime
 
+from crocolaketools.config import config_paths as cfgp
 from crocolaketools.downloader.downloaderSprayGliders import (
     SPRAY_BASE_URL,
     SPRAY_FILES,
@@ -67,7 +68,7 @@ def main():
         "--config",
         action="store_true",
         default=False,
-        help="Use config.yaml defaults for input_path",
+        help="Use datasets.yaml defaults for input_path",
     )
     parser.add_argument(
         "--files",
@@ -79,7 +80,11 @@ def main():
         ),
     )
 
+
+    cfgp.add_config_dir_argument(parser)
     args = parser.parse_args()
+
+    cfgp.apply_config_dir_argument(args)
 
     config = None if args.config else {'db': 'SprayGliders', 'db_type': 'PHY'}
 

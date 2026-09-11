@@ -10,8 +10,6 @@
 ##########################################################################
 import argparse
 import os
-import importlib.resources
-import yaml
 from warnings import simplefilter
 from datetime import datetime
 
@@ -20,6 +18,7 @@ import pandas as pd
 # ignore pandas "educational" performance warnings
 simplefilter(action="ignore", category=pd.errors.PerformanceWarning)
 from dask.distributed import Client, Lock
+from crocolaketools.config import config_paths as cfgp
 from crocolaketools.converter.converterOleanderXBT import ConverterOleanderXBT
 
 import functools
@@ -28,9 +27,7 @@ print = functools.partial(print, flush=True)
 
 def oleanderXBT2parquet(oleanderXBT_path=None, outdir_pqt=None, fname_pq=None, use_config_file=None):
 
-    config_path = importlib.resources.files("crocolaketools.config").joinpath("config_cluster.yaml")
-    config_cluster = yaml.safe_load(open(config_path))
-    client = Client(**config_cluster["OLEANDER_XBT"])
+    client = Client(**cfgp.get_config_cluster_db_dict("OLEANDER_XBT"))
 
     if not use_config_file:
         print("Using user-defined configuration")
@@ -47,7 +44,7 @@ def oleanderXBT2parquet(oleanderXBT_path=None, outdir_pqt=None, fname_pq=None, u
         ConverterPHY = ConverterOleanderXBT(config)
 
     else: # reads from file
-        print("Using configuration from config.yaml")
+        print("Using configuration from datasets.yaml")
         ConverterPHY = ConverterOleanderXBT(db_type='phy')
     print("Converting PHY files to parquet...")
     ConverterPHY.convert()
@@ -67,7 +64,11 @@ def main():
     parser.add_argument("-f", help="Basename for output files", required=False, default="demo_OLEANDERXBT.parquet")
     parser.add_argument('--config', action='store_true', help="Use config files instead of parsing arguments", required=False, default=None)
 
+
+    cfgp.add_config_dir_argument(parser)
     args = parser.parse_args()
+
+    cfgp.apply_config_dir_argument(args)
 
     oleanderXBT2parquet(args.i, args.o, args.f, args.config)
 

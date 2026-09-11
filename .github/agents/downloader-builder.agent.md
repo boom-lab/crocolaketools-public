@@ -63,7 +63,7 @@ Use these repository references directly:
   `scripts/download_saildrones.py`, `scripts/download_oleanderXBT.py`,
   `scripts/download_ioos_gliders.py`
 - Configuration:
-  `crocolaketools/config/config.yaml`
+  `datasets.yaml` (the template `crocolaketools/config/datasets.example.yaml`, and `tests/config/datasets.yaml`)
 - Console registration:
   `setup.py`
 
@@ -71,7 +71,7 @@ Use these repository references directly:
 
 `Downloader.__init__(config)` requires a configuration dictionary containing
 `db` and `db_type`. It loads the matching `<db>_<db_type>` section from
-`config.yaml`, fills missing keys, validates the database name and `PHY`/`BGC`
+`datasets.yaml`, fills missing keys, validates the database name and `PHY`/`BGC`
 type, resolves `input_path` relative to the packaged config directory, and
 creates the destination directory.
 
@@ -284,7 +284,7 @@ The script should:
 
 - expose a Python wrapper around the downloader;
 - define `main()` with `argparse`;
-- provide `--config` to use `config.yaml`;
+- provide `--config` to use `datasets.yaml`;
 - expose source-specific selection options;
 - expose `--overwrite`, `--dryrun`/`--dry-run`, and thread options when
   supported by the downloader;
@@ -299,7 +299,7 @@ downloader module so the Python API and CLI use the same implementation.
 ## 6. Update configuration and package registration
 
 Add the dataset configuration to
-`crocolaketools/config/config.yaml`. Usually add both `<DB>_PHY` and
+`datasets.yaml` (the template `crocolaketools/config/datasets.example.yaml`, and `tests/config/datasets.yaml`). Usually add both `<DB>_PHY` and
 `<DB>_BGC` entries when the downloader is shared, even if only one type is
 currently meaningful. Include only keys used by the source:
 
@@ -390,7 +390,7 @@ Do not claim success solely because an output directory was created.
 - [ ] ERDDAP variables, constraints, timestamps, chunking, retries, and merges
   follow the base contract.
 - [ ] The CLI wrapper is implemented and registered in `setup.py`.
-- [ ] `config.yaml` contains the correct database/type and downloader settings.
+- [ ] `datasets.yaml` contains the correct database/type and downloader settings.
 - [ ] Tests cover source discovery, local paths, failures, and reruns.
 - [ ] Syntax checks, targeted tests, and a smoke or dry-run validation passed.
 
